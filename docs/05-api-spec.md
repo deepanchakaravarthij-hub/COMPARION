@@ -8,6 +8,8 @@
 - `GET /v1/jobs/{job_id}/result` fetch result JSON with schema versioning, filtering, and pagination.
 - `GET /v1/jobs/{job_id}/report-link` fetch report URL (signed when object storage mode is enabled).
 - `GET /v1/jobs/{job_id}/report.html` fetch HTML report.
+- `GET /v1/jobs/{job_id}/artifact-link/{label}` fetch artifact URL for `a` or `b`.
+- `GET /v1/jobs/{job_id}/artifact/{label}` fetch original uploaded artifact for native viewers.
 - `GET /viewer` open built-in operator viewer UI.
 
 ## Compare Request
@@ -33,6 +35,7 @@ Result payload fields:
 - `changes[]`
 - optional `diagnostics`
 - optional `udm` (Unified Document Model view)
+- optional `viewer_hints` (renderer, anchors, filter lists, and normalized coordinate policy)
 - optional `pagination` metadata
 
 Each `changes[]` entry includes:
@@ -78,6 +81,17 @@ When `COMPARION_OBJECT_STORAGE_ENABLED=true`:
 - `GET /v1/jobs/{job_id}/report.html` requires valid `token` and `expires` query parameters.
 
 When disabled, report-link returns direct `/v1/jobs/{job_id}/report.html`.
+
+## Native Viewer Artifact Access
+
+Next.js native viewers should request original uploads using:
+
+- `GET /v1/jobs/{job_id}/artifact-link/a`
+- `GET /v1/jobs/{job_id}/artifact-link/b`
+
+When object storage mode is enabled, these links include signed `token` and `expires` query
+parameters. The artifact endpoint records audit events and returns the original upload with an
+appropriate media type.
 
 ## Format Examples
 

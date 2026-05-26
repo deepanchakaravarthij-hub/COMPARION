@@ -40,6 +40,30 @@ Alert behavior:
 - Failure-rate alert when `failed / total` exceeds threshold
 - Queue-depth alert when `queued + running` exceeds threshold
 
+## Frontend Performance and Telemetry
+
+The Next.js viewer emits browser events named `comparion:telemetry` for:
+
+- `compare_submit_started`
+- `compare_submit_completed`
+- `viewer_first_render`
+- `renderer_error`
+
+Pilot dashboards should track submit latency, time to first viewer render, renderer errors by
+file type, and artifact fetch failures. Large jobs should stay interactive through virtualized
+change panels, lazy artifact loading, and per-renderer module boundaries.
+
+## Frontend E2E Matrix
+
+Run `npm run test:e2e` in `frontend/` after starting or allowing Playwright to start the Next.js
+dev server. The baseline matrix covers completed viewer rendering for:
+
+- `pdf`
+- `image`
+- `docx`
+- `xlsx`
+- `pptx`
+
 ## Retention and Cleanup
 
 - Retention period: `COMPARION_RETENTION_DAYS` (default `7`)

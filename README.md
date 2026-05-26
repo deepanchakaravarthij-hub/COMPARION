@@ -37,12 +37,29 @@ This starts:
 - `GET /v1/jobs/{job_id}/result`
 - `GET /v1/jobs/{job_id}/report-link`
 - `GET /v1/jobs/{job_id}/report.html`
+- `GET /v1/jobs/{job_id}/artifact-link/{label}`
+- `GET /v1/jobs/{job_id}/artifact/{label}`
 - `GET /v1/metrics`
 - `POST /v1/ops/retention/cleanup`
 - `GET /viewer`
 
 This is a Phase 2 scaffold with SQLite job storage, local artifact storage, baseline PDF/image comparison, and scan preprocessing/alignment diagnostics.
 Uploads, result JSON, and report HTML are written under `storage/`.
+
+## Next.js Diff UI
+
+The standalone native viewer lives in `frontend/`.
+
+```bash
+cd frontend
+npm install
+copy .env.example .env.local
+npm run dev
+```
+
+Set `NEXT_PUBLIC_API_BASE_URL` to the FastAPI origin. The UI covers upload, job polling/history,
+artifact-backed native rendering, side-by-side change navigation, semantic/risk filtering, and
+Playwright coverage for all supported file types.
 
 Security and operations options are controlled by environment variables:
 

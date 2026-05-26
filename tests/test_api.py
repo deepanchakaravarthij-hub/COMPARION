@@ -230,10 +230,22 @@ def test_compare_pdf_and_fetch_result_and_report() -> None:
     assert payload["result_schema_version"] == "2.1"
     assert payload["file_type"] == "pdf"
     assert payload["changes"]
+    assert payload["viewer_hints"]["coordinate_policy"] == "normalized_0_to_1"
+    assert payload["viewer_hints"]["renderer"]["type"] == "pdf"
 
     report_res = client.get(f"/v1/jobs/{job_id}/report.html")
     assert report_res.status_code == 200
     assert "COMPARION Report" in report_res.text
+
+    artifact_link_res = client.get(f"/v1/jobs/{job_id}/artifact-link/a")
+    assert artifact_link_res.status_code == 200
+    artifact_link = artifact_link_res.json()
+    assert artifact_link["signed"] is False
+    assert artifact_link["url"].endswith(f"/v1/jobs/{job_id}/artifact/a")
+
+    artifact_res = client.get(f"/v1/jobs/{job_id}/artifact/a")
+    assert artifact_res.status_code == 200
+    assert artifact_res.content.startswith(b"%PDF")
 
 
 def test_compare_docx_and_fetch_result_and_report() -> None:
@@ -474,6 +486,7 @@ def test_result_version_compatibility_view() -> None:
     legacy = legacy_res.json()
     assert legacy["result_schema_version"] == "2.0"
     assert "udm" not in legacy or legacy["udm"] is None
+    assert "viewer_hints" not in legacy or legacy["viewer_hints"] is None
     for change in legacy["changes"]:
         assert change["category"] not in {"formula", "sheet", "slide"}
         assert change["source_ref"].get("sheet") is None
@@ -511,6 +524,11 @@ def test_report_link_unsigned_and_signed_modes() -> None:
         signed_payload = link_signed_res.json()
         assert signed_payload["signed"] is True
         assert "token=" in signed_payload["url"]
+        artifact_signed_res = client.get(f"/v1/jobs/{job_id}/artifact-link/b")
+        assert artifact_signed_res.status_code == 200
+        artifact_signed_payload = artifact_signed_res.json()
+        assert artifact_signed_payload["signed"] is True
+        assert "token=" in artifact_signed_payload["url"]
 
 
 def test_rejects_unsupported_extension() -> None:

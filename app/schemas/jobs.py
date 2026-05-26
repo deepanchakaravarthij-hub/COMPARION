@@ -94,6 +94,7 @@ class JobResult(BaseModel):
     diagnostics: dict[str, Any] | None = None
     udm: UdmPayload | None = None
     semantic: dict[str, Any] | None = None
+    viewer_hints: dict[str, Any] | None = None
     pagination: dict[str, Any] | None = None
 
 

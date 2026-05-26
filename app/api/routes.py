@@ -9,7 +9,7 @@ from typing import Annotated, Any
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Query, Request, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import ValidationError
 
 from app.core.config import get_settings
@@ -44,6 +44,7 @@ from app.services.upload_validation import validate_upload
 router = APIRouter()
 SUPPORTED_RESULT_VERSIONS = {"2.0", "2.1"}
 logger = logging.getLogger("comparion.api")
+ARTIFACT_LABELS = {"a": "file_a_path", "b": "file_b_path"}
 
 
 @router.post("/compare", response_model=CompareResponse)
@@ -259,6 +260,73 @@ def job_report_link(request: Request, job_id: str) -> dict[str, Any]:
     return payload
 
 
+@router.get("/jobs/{job_id}/artifact/{label}")
+def job_artifact(
+    request: Request,
+    job_id: str,
+    label: str,
+    token: str | None = Query(default=None),
+    expires: int | None = Query(default=None),
+) -> FileResponse:
+    _require_auth(request)
+    job = _get_existing_job(job_id)
+    artifact_path_key = ARTIFACT_LABELS.get(label)
+    if artifact_path_key is None:
+        raise HTTPException(status_code=404, detail="Artifact label not found")
+    artifact_path = job.get(artifact_path_key)
+    if not artifact_path:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    settings = get_settings()
+    if settings.object_storage_enabled:
+        if not token or not expires:
+            raise HTTPException(status_code=403, detail="Signed artifact token is required")
+        if not _is_valid_artifact_token(
+            job_id=job_id,
+            label=label,
+            token=token,
+            expires=expires,
+        ):
+            raise HTTPException(status_code=403, detail="Invalid or expired artifact token")
+    add_audit_event(
+        event_type="artifact_accessed",
+        job_id=job_id,
+        request_id=getattr(request.state, "request_id", None),
+        details={"label": label, "signed": settings.object_storage_enabled},
+    )
+    filename = job["file_a"] if label == "a" else job["file_b"]
+    return FileResponse(
+        artifact_path,
+        filename=filename,
+        media_type=_artifact_media_type(job["file_a_type"]),
+    )
+
+
+@router.get("/jobs/{job_id}/artifact-link/{label}")
+def job_artifact_link(request: Request, job_id: str, label: str) -> dict[str, Any]:
+    _require_auth(request)
+    job = _get_existing_job(job_id)
+    artifact_path_key = ARTIFACT_LABELS.get(label)
+    if artifact_path_key is None or not job.get(artifact_path_key):
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    settings = get_settings()
+    if not settings.object_storage_enabled:
+        return {
+            "url": f"/v1/jobs/{job_id}/artifact/{label}",
+            "signed": False,
+            "label": label,
+        }
+
+    expires = int(time.time()) + settings.signed_url_ttl_seconds
+    token = _sign_artifact_token(job_id=job_id, label=label, expires=expires)
+    query = urlencode({"token": token, "expires": expires})
+    return {
+        "url": f"/v1/jobs/{job_id}/artifact/{label}?{query}",
+        "signed": True,
+        "label": label,
+        "expires": expires,
+    }
+
+
 @router.get("/metrics")
 def metrics(request: Request) -> dict[str, Any]:
     _require_auth(request)
@@ -449,6 +517,7 @@ def _render_result_version(result: dict[str, Any], version: str) -> dict[str, An
     rendered = {**result, "changes": mapped, "result_schema_version": "2.0"}
     rendered.pop("udm", None)
     rendered.pop("semantic", None)
+    rendered.pop("viewer_hints", None)
     return rendered
 
 
@@ -458,11 +527,34 @@ def _sign_report_token(job_id: str, expires: int) -> str:
     return hmac.new(secret, message, hashlib.sha256).hexdigest()
 
 
+def _sign_artifact_token(job_id: str, label: str, expires: int) -> str:
+    message = f"{job_id}:{label}:{expires}".encode()
+    secret = get_settings().signed_url_secret.encode()
+    return hmac.new(secret, message, hashlib.sha256).hexdigest()
+
+
 def _is_valid_report_token(job_id: str, token: str, expires: int) -> bool:
     if expires < int(time.time()):
         return False
     expected = _sign_report_token(job_id=job_id, expires=expires)
     return hmac.compare_digest(expected, token)
+
+
+def _is_valid_artifact_token(job_id: str, label: str, token: str, expires: int) -> bool:
+    if expires < int(time.time()):
+        return False
+    expected = _sign_artifact_token(job_id=job_id, label=label, expires=expires)
+    return hmac.compare_digest(expected, token)
+
+
+def _artifact_media_type(file_type: str) -> str:
+    return {
+        "pdf": "application/pdf",
+        "image": "image/png",
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    }.get(file_type, "application/octet-stream")
 
 
 def _request_hash(upload_a: Any, upload_b: Any) -> str:

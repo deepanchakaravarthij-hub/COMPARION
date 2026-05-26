@@ -354,6 +354,7 @@ def _result(
         "diagnostics": diagnostics,
         "udm": _build_udm(file_type, semantic_changes),
         "semantic": semantic_payload,
+        "viewer_hints": _build_viewer_hints(file_type, semantic_changes, diagnostics),
     }
 
 
@@ -453,3 +454,73 @@ def _udm_block_type(category: str) -> str:
     if category in {"metadata", "visual", "formatting"}:
         return "metadata"
     return "unknown"
+
+
+def _build_viewer_hints(
+    file_type: str,
+    changes: list[dict[str, Any]],
+    diagnostics: dict[str, Any],
+) -> dict[str, Any]:
+    refs = [change.get("source_ref", {}) for change in changes]
+    categories = sorted({str(change.get("category", "unknown")) for change in changes})
+    severities = sorted({str(change.get("severity", "medium")) for change in changes})
+    anchors = {
+        "pages": sorted({ref["page"] for ref in refs if ref.get("page") is not None}),
+        "slides": sorted({ref["slide"] for ref in refs if ref.get("slide") is not None}),
+        "sheets": sorted({ref["sheet"] for ref in refs if ref.get("sheet") is not None}),
+        "cells": sorted({ref["cell"] for ref in refs if ref.get("cell") is not None}),
+    }
+    return {
+        "coordinate_policy": "normalized_0_to_1",
+        "artifact_labels": ["a", "b"],
+        "renderer": _renderer_hint(file_type),
+        "anchors": anchors,
+        "filters": {
+            "categories": categories,
+            "severities": severities,
+            "semantic_labels": sorted(
+                {
+                    str(change.get("semantic_label"))
+                    for change in changes
+                    if change.get("semantic_label") is not None
+                }
+            ),
+        },
+        "counts": _viewer_counts(file_type, diagnostics),
+    }
+
+
+def _renderer_hint(file_type: str) -> dict[str, Any]:
+    if file_type == "pdf":
+        return {"type": "pdf", "supports_overlays": True, "primary_axis": "page"}
+    if file_type == "image":
+        return {"type": "image", "supports_overlays": True, "primary_axis": "page"}
+    if file_type == "docx":
+        return {"type": "docx", "supports_overlays": False, "primary_axis": "paragraph"}
+    if file_type == "xlsx":
+        return {"type": "xlsx", "supports_overlays": False, "primary_axis": "sheet"}
+    if file_type == "pptx":
+        return {"type": "pptx", "supports_overlays": True, "primary_axis": "slide"}
+    return {"type": file_type, "supports_overlays": False, "primary_axis": "change"}
+
+
+def _viewer_counts(file_type: str, diagnostics: dict[str, Any]) -> dict[str, Any]:
+    if file_type == "docx":
+        docx_counts = diagnostics.get("docx", {})
+        return docx_counts if isinstance(docx_counts, dict) else {}
+    if file_type == "xlsx":
+        xlsx_counts = diagnostics.get("xlsx", {})
+        if isinstance(xlsx_counts, dict):
+            sheet_count = xlsx_counts.get("sheet_count", {})
+            return sheet_count if isinstance(sheet_count, dict) else {}
+        return {}
+    if file_type == "pptx":
+        pptx_counts = diagnostics.get("pptx", {})
+        if isinstance(pptx_counts, dict):
+            slide_count = pptx_counts.get("slide_count", {})
+            return slide_count if isinstance(slide_count, dict) else {}
+        return {}
+    benchmark = diagnostics.get("benchmark", {})
+    if isinstance(benchmark, dict):
+        return {"change_count": benchmark.get("change_count", 0)}
+    return {"change_count": 0}
