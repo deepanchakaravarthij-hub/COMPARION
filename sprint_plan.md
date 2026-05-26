@@ -86,37 +86,37 @@ Core capabilities:
 
 ### Backend and API
 
-- [ ] Replace in-memory job store with DB-backed job table.
-- [ ] Add job states: `queued`, `running`, `completed`, `failed`, `cancelled`.
-- [ ] Add upload validation for size, MIME type, extension, and duplicate uploads.
-- [ ] Save uploaded files through a storage abstraction that supports local disk and MinIO.
-- [ ] Add result schema versioning with `result_schema_version`.
-- [ ] Add consistent API error contract.
-- [ ] Add basic retry behavior for transient processing failures.
-- [ ] Add report download endpoint.
+- [x] Replace in-memory job store with DB-backed job table.
+- [x] Add job states: `queued`, `running`, `completed`, `failed`, `cancelled`.
+- [x] Add upload validation for size, MIME type, extension, and duplicate uploads.
+- [x] Save uploaded files through a storage abstraction that supports local disk and MinIO.
+- [x] Add result schema versioning with `result_schema_version`.
+- [x] Add consistent API error contract.
+- [x] Add basic retry behavior for transient processing failures.
+- [x] Add report download endpoint.
 
 ### Comparison Engine
 
-- [ ] Implement file-type routing pipeline.
-- [ ] Add PDF page rendering with PyMuPDF.
-- [ ] Add image normalization path: resize, grayscale, thresholding, and optional denoise.
-- [ ] Add native PDF text extraction where available.
-- [ ] Add baseline text diff using token-level comparison.
-- [ ] Add baseline visual diff using SSIM and contour bounding boxes.
-- [ ] Emit normalized JSON with page-level coordinates.
-- [ ] Generate HTML report stub with summary and page-level changes.
+- [x] Implement file-type routing pipeline.
+- [x] Add PDF page rendering with PyMuPDF.
+- [x] Add image normalization path: resize, grayscale, thresholding, and optional denoise.
+- [x] Add native PDF text extraction where available.
+- [x] Add baseline text diff using token-level comparison.
+- [x] Add baseline visual diff using SSIM and contour bounding boxes.
+- [x] Emit normalized JSON with page-level coordinates.
+- [x] Generate HTML report stub with summary and page-level changes.
 
 ### QA
 
-- [ ] Add unit tests for job state transitions.
-- [ ] Add API integration tests for uploads, status polling, result retrieval, and error paths.
-- [ ] Add golden tests for simple PDF and image fixtures.
+- [x] Add unit tests for job state transitions.
+- [x] Add API integration tests for uploads, status polling, result retrieval, and error paths.
+- [x] Add golden tests for simple PDF and image fixtures.
 
 ### Exit Criteria
 
-- [ ] User can upload two PDFs or images and receive deterministic JSON plus an HTML report.
-- [ ] Failed jobs include a clear machine-readable and human-readable reason.
-- [ ] Simple PDF/image benchmark cases run in CI.
+- [x] User can upload two PDFs or images and receive deterministic JSON plus an HTML report.
+- [x] Failed jobs include a clear machine-readable and human-readable reason.
+- [x] Simple PDF/image benchmark cases run in CI.
 
 ---
 
@@ -349,7 +349,7 @@ Every story or task should satisfy the following before being marked done:
 ## Master Tracking Checklist
 
 - [x] Sprint 0 complete.
-- [ ] Sprint 1 complete.
+- [x] Sprint 1 complete.
 - [ ] Sprint 2 complete.
 - [ ] Sprint 3 complete.
 - [ ] Sprint 4 complete.

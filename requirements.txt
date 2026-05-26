@@ -7,3 +7,7 @@ black
 mypy
 ruff
 pre-commit
+PyMuPDF
+Pillow
+numpy
+scikit-image

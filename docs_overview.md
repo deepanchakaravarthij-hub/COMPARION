@@ -16,6 +16,7 @@ This repository includes a POC documentation set for building a multi-format doc
 - `docs/08-implementation-backlog.md` - sprint-ready task breakdown.
 - `docs/09-poc-scope.md` - POC must-have, should-have, later, and out-of-scope items.
 - `docs/10-non-functional-targets.md` - initial performance, quality, reliability, security, and operability targets.
+- `docs/11-sprint-1-execution-plan.md` - Sprint 1 implementation sequence, acceptance checks, risks, and demo script.
 - `docs/adr/` - architecture decision records.
 - `benchmarks/README.md` - benchmark fixture layout and naming rules.
 
@@ -31,3 +32,4 @@ This repository includes a POC documentation set for building a multi-format doc
 8. `08-implementation-backlog`
 9. `09-poc-scope`
 10. `10-non-functional-targets`
+11. `11-sprint-1-execution-plan`

@@ -34,8 +34,10 @@ This starts:
 - `POST /v1/compare`
 - `GET /v1/jobs/{job_id}`
 - `GET /v1/jobs/{job_id}/result`
+- `GET /v1/jobs/{job_id}/report.html`
 
-This is a Phase 0/Phase 1 scaffold with in-memory job storage and a baseline binary comparator.
+This is a Phase 1 scaffold with SQLite job storage, local artifact storage, and baseline PDF/image comparison.
+Uploads, result JSON, and report HTML are written under `storage/`.
 
 ## Development Checks
 

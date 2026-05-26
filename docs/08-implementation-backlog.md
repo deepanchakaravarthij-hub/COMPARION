@@ -1,9 +1,11 @@
 # Implementation Backlog
 
 ## Sprint 1
-- Project scaffolding.
-- Upload + job lifecycle.
+- DB-backed job lifecycle.
+- Upload validation and storage abstraction.
 - PDF/image rendering.
+- Baseline text and visual diff.
+- Result JSON and HTML report endpoint.
 
 ## Sprint 2
 - OCR + normalization + alignment.
