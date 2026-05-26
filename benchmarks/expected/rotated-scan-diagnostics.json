@@ -1,0 +1,22 @@
+{
+  "expected": {
+    "diagnostics": {
+      "alignment": "present",
+      "debug_artifacts": "present",
+      "preprocessing": [
+        {
+          "document": "a",
+          "rotation_degrees": 0
+        },
+        {
+          "document": "b",
+          "rotation_degrees": 270
+        }
+      ]
+    },
+    "file_type": "image",
+    "max_expected_changes": 1,
+    "result_schema_version": "2.0"
+  },
+  "fixture": "synthetic rotated scanned image"
+}

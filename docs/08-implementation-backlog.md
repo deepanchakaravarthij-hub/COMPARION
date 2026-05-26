@@ -8,9 +8,10 @@
 - Result JSON and HTML report endpoint.
 
 ## Sprint 2
-- OCR + normalization + alignment.
-- Text + visual diff.
-- HTML report.
+- OCR wrapper and optional adapters.
+- Scan preprocessing with orientation correction, deskew, denoise, thresholding, and contrast enhancement.
+- Coarse and ORB/homography alignment with debug artifacts.
+- Scanned-document regression tests and benchmark diagnostics.
 
 ## Sprint 3
 - DOCX/XLSX/PPTX comparators.

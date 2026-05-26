@@ -122,7 +122,7 @@ def _run_compare_job(
     last_error: Exception | None = None
     for _attempt in range(2):
         try:
-            result = compare_files(file_a_name, file_b_name, content_a, content_b)
+            result = compare_files(file_a_name, file_b_name, content_a, content_b, job_id=job_id)
             JobResult(**result)
             result_path = storage.save_text(
                 job_id,

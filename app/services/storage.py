@@ -27,6 +27,11 @@ class LocalStorage:
         path.write_text(content, encoding="utf-8")
         return str(path)
 
+    def save_bytes(self, job_id: str, filename: str, content: bytes) -> str:
+        path = self.job_dir(job_id) / filename
+        path.write_bytes(content)
+        return str(path)
+
     def read_text(self, path: str) -> str:
         return Path(path).read_text(encoding="utf-8")
 

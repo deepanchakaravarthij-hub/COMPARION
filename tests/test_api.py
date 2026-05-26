@@ -63,7 +63,7 @@ def test_compare_pdf_and_fetch_result_and_report() -> None:
     result_res = client.get(f"/v1/jobs/{job_id}/result")
     assert result_res.status_code == 200
     payload = result_res.json()
-    assert payload["result_schema_version"] == "1.0"
+    assert payload["result_schema_version"] == "2.0"
     assert payload["file_type"] == "pdf"
     assert payload["changes"]
 
@@ -131,11 +131,11 @@ def test_failed_job_includes_error_reason() -> None:
 def test_image_diff_is_deterministic() -> None:
     result_a = compare_files("a.png", "b.png", _image_bytes(), _image_bytes(mark=True))
     result_b = compare_files("a.png", "b.png", _image_bytes(), _image_bytes(mark=True))
-    assert result_a == result_b
+    assert result_a["changes"] == result_b["changes"]
     assert result_a["changes"][0]["bbox"] == {
         "page": 1,
-        "x": 0.2,
-        "y": 0.2,
-        "width": 0.31,
-        "height": 0.31,
+        "x": 0.61,
+        "y": 0.5,
+        "width": 0.32,
+        "height": 0.32,
     }

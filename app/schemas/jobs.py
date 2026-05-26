@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -64,3 +64,4 @@ class JobResult(BaseModel):
     summary: str
     file_type: str
     changes: list[ChangeItem]
+    diagnostics: dict[str, Any] | None = None

@@ -11,13 +11,14 @@ Request includes:
 - thresholds
 - enable_semantic
 
-## Sprint 1 Response Contract
+## Sprint 2 Response Contract
 
 Result JSON includes:
 - `result_schema_version`
 - `summary`
 - `file_type`
 - `changes`
+- optional `diagnostics`
 
 Each change includes:
 - `id`
@@ -30,3 +31,5 @@ Each change includes:
 - optional `bbox`
 
 The report endpoint returns HTML once the job is completed and returns `409` while the job is incomplete.
+
+Sprint 2 uses `result_schema_version` `2.0` and may include diagnostics for preprocessing, alignment, debug artifacts, and benchmark metrics.

@@ -126,33 +126,33 @@ Core capabilities:
 
 ### OCR and Preprocessing
 
-- [ ] Integrate PaddleOCR service wrapper.
-- [ ] Add orientation detection and rotation correction.
-- [ ] Add deskew pipeline using Hough or line-based methods.
-- [ ] Add denoise, thresholding, and contrast enhancement options.
-- [ ] Add OCR confidence filtering.
-- [ ] Add OCR token cleanup and normalization.
-- [ ] Group OCR tokens into lines, paragraphs, and blocks.
+- [x] Integrate PaddleOCR service wrapper.
+- [x] Add orientation detection and rotation correction.
+- [x] Add deskew pipeline using Hough or line-based methods.
+- [x] Add denoise, thresholding, and contrast enhancement options.
+- [x] Add OCR confidence filtering.
+- [x] Add OCR token cleanup and normalization.
+- [x] Group OCR tokens into lines, paragraphs, and blocks.
 
 ### Alignment
 
-- [ ] Implement coarse page alignment for scale and orientation.
-- [ ] Implement feature-based alignment with ORB and homography.
-- [ ] Add optional fine alignment refinement with ECC.
-- [ ] Persist alignment matrices for debug and replay.
-- [ ] Emit visual debug artifacts for failed or low-confidence alignments.
+- [x] Implement coarse page alignment for scale and orientation.
+- [x] Implement feature-based alignment with ORB and homography.
+- [x] Add optional fine alignment refinement with ECC.
+- [x] Persist alignment matrices for debug and replay.
+- [x] Emit visual debug artifacts for failed or low-confidence alignments.
 
 ### QA and Benchmarking
 
-- [ ] Build scanned-document benchmark set with rotated, skewed, noisy, and low-resolution examples.
-- [ ] Track precision, recall, and false-positive rate.
-- [ ] Add regression tests for rotated and skewed scanned cases.
+- [x] Build scanned-document benchmark set with rotated, skewed, noisy, and low-resolution examples.
+- [x] Track precision, recall, and false-positive rate.
+- [x] Add regression tests for rotated and skewed scanned cases.
 
 ### Exit Criteria
 
-- [ ] Rotated and skewed scan cases complete successfully.
-- [ ] False-positive rate improves against the Sprint 1 baseline.
-- [ ] Alignment failures are visible in logs and report diagnostics.
+- [x] Rotated and skewed scan cases complete successfully.
+- [x] False-positive rate improves against the Sprint 1 baseline.
+- [x] Alignment failures are visible in logs and report diagnostics.
 
 ---
 
@@ -350,7 +350,7 @@ Every story or task should satisfy the following before being marked done:
 
 - [x] Sprint 0 complete.
 - [x] Sprint 1 complete.
-- [ ] Sprint 2 complete.
+- [x] Sprint 2 complete.
 - [ ] Sprint 3 complete.
 - [ ] Sprint 4 complete.
 - [ ] Sprint 5 complete.

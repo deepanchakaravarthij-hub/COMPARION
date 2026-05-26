@@ -8,8 +8,9 @@ dependencies = [
     "python-multipart",
     "PyMuPDF",
     "Pillow",
-    "numpy",
+    "numpy<2.0",
     "scikit-image",
+    "opencv-python-headless<4.12",
     "uvicorn[standard]",
 ]
 

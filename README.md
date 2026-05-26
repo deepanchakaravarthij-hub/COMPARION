@@ -36,7 +36,7 @@ This starts:
 - `GET /v1/jobs/{job_id}/result`
 - `GET /v1/jobs/{job_id}/report.html`
 
-This is a Phase 1 scaffold with SQLite job storage, local artifact storage, and baseline PDF/image comparison.
+This is a Phase 2 scaffold with SQLite job storage, local artifact storage, baseline PDF/image comparison, and scan preprocessing/alignment diagnostics.
 Uploads, result JSON, and report HTML are written under `storage/`.
 
 ## Development Checks
