@@ -17,11 +17,14 @@ from app.services.comparison.docx_engine import compare_docx_documents
 from app.services.comparison.image_engine import load_normalized_image, visual_change
 from app.services.comparison.ocr import filter_tokens, get_ocr_engine
 from app.services.comparison.pdf_engine import extract_text, render_pages
+from app.services.comparison.pptx_engine import compare_pptx_presentations
 from app.services.comparison.preprocessing import PreprocessedImage, preprocess_image
 from app.services.comparison.text_diff import token_changes
+from app.services.comparison.xlsx_engine import compare_xlsx_workbooks
+from app.services.semantic import SemanticOptions, apply_semantic_layer
 from app.utils.filetype import detect_type
 
-RESULT_SCHEMA_VERSION = "2.0"
+RESULT_SCHEMA_VERSION = "2.1"
 
 
 def compare_files(
@@ -58,6 +61,10 @@ def compare_files(
         return _compare_image(content_a, content_b, job_id, started_at)
     if type_a == "docx":
         return _compare_docx(content_a, content_b, started_at)
+    if type_a == "xlsx":
+        return _compare_xlsx(content_a, content_b, started_at)
+    if type_a == "pptx":
+        return _compare_pptx(content_a, content_b, started_at)
 
     return _result(
         summary=f"Unsupported file type for Sprint 2 baseline: {type_a}",
@@ -207,6 +214,52 @@ def _compare_docx(
     )
 
 
+def _compare_xlsx(
+    content_a: bytes,
+    content_b: bytes,
+    started_at: float,
+) -> dict[str, Any]:
+    changes, xlsx_diagnostics = compare_xlsx_workbooks(content_a, content_b)
+    diagnostics = _diagnostics(
+        started_at,
+        [],
+        [],
+        [],
+        [],
+        change_count=len(changes),
+    )
+    diagnostics["xlsx"] = xlsx_diagnostics
+    return _result(
+        summary=_summary(changes),
+        file_type="xlsx",
+        changes=changes,
+        diagnostics=diagnostics,
+    )
+
+
+def _compare_pptx(
+    content_a: bytes,
+    content_b: bytes,
+    started_at: float,
+) -> dict[str, Any]:
+    changes, pptx_diagnostics = compare_pptx_presentations(content_a, content_b)
+    diagnostics = _diagnostics(
+        started_at,
+        [],
+        [],
+        [],
+        [],
+        change_count=len(changes),
+    )
+    diagnostics["pptx"] = pptx_diagnostics
+    return _result(
+        summary=_summary(changes),
+        file_type="pptx",
+        changes=changes,
+        diagnostics=diagnostics,
+    )
+
+
 def _prepare_pair(image_a: Image.Image, image_b: Image.Image) -> tuple[
     PreprocessedImage,
     PreprocessedImage,
@@ -282,12 +335,25 @@ def _result(
     for index, change in enumerate(changes, start=1):
         item = {"id": f"chg-{index:03d}", **change}
         numbered_changes.append(item)
+    semantic_options = SemanticOptions(
+        enabled=get_settings().semantic_enabled,
+        similarity_threshold=get_settings().semantic_similarity_threshold,
+        embedding_service=get_settings().embedding_model_service,
+        local_summary_enabled=get_settings().local_summary_enabled,
+    )
+    semantic_changes, semantic_payload = apply_semantic_layer(
+        numbered_changes,
+        file_type,
+        semantic_options,
+    )
     return {
         "result_schema_version": RESULT_SCHEMA_VERSION,
         "summary": summary,
         "file_type": file_type,
-        "changes": numbered_changes,
+        "changes": semantic_changes,
         "diagnostics": diagnostics,
+        "udm": _build_udm(file_type, semantic_changes),
+        "semantic": semantic_payload,
     }
 
 
@@ -341,3 +407,49 @@ def _diagnostics(
             "false_positive_count": metrics.false_positive_count,
         },
     }
+
+
+def _build_udm(file_type: str, changes: list[dict[str, Any]]) -> dict[str, Any]:
+    blocks = []
+    for change in changes:
+        message = change.get("message", "")
+        block_type = _udm_block_type(change.get("category", ""))
+        bbox = change.get("bbox")
+        blocks.append(
+            {
+                "block_id": change["id"],
+                "type": block_type,
+                "category": change.get("category", "unknown"),
+                "change_type": change.get("type", "modified"),
+                "severity": change.get("severity", "medium"),
+                "confidence": change.get("confidence", 0.0),
+                "text": message if isinstance(message, str) else None,
+                "source_ref": change.get("source_ref", {}),
+                "bbox": bbox,
+            }
+        )
+    return {
+        "schema_version": "1.0",
+        "documents": [
+            {
+                "doc_id": "a",
+                "version_id": "current",
+                "format": file_type,
+                "blocks": blocks,
+            }
+        ],
+    }
+
+
+def _udm_block_type(category: str) -> str:
+    if category in {"text", "formula"}:
+        return "text"
+    if category == "table":
+        return "table"
+    if category == "image":
+        return "image"
+    if category in {"structure", "sheet", "slide"}:
+        return "structure"
+    if category in {"metadata", "visual", "formatting"}:
+        return "metadata"
+    return "unknown"

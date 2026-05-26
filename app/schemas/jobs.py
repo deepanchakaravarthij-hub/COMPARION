@@ -4,6 +4,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
+from app.schemas.udm import UdmPayload
+
 JobStatus = Literal["queued", "running", "completed", "failed", "cancelled"]
 ChangeType = Literal["added", "removed", "modified", "warning"]
 ChangeCategory = Literal[
@@ -15,6 +17,9 @@ ChangeCategory = Literal[
     "table",
     "image",
     "structure",
+    "formula",
+    "sheet",
+    "slide",
 ]
 Severity = Literal["low", "medium", "high"]
 
@@ -55,6 +60,9 @@ class BoundingBox(BaseModel):
 class SourceRef(BaseModel):
     document: Literal["a", "b", "both"]
     page: int | None = None
+    slide: int | None = None
+    sheet: str | None = None
+    cell: str | None = None
     part: str | None = None
     block_id: str | None = None
     paragraph: int | None = None
@@ -73,6 +81,8 @@ class ChangeItem(BaseModel):
     confidence: float
     message: str
     source_ref: SourceRef
+    semantic_label: Literal["wording-only", "meaning-changed", "moved", "reordered"] | None = None
+    semantic_score: float | None = None
     bbox: BoundingBox | None = None
 
 
@@ -82,3 +92,21 @@ class JobResult(BaseModel):
     file_type: str
     changes: list[ChangeItem]
     diagnostics: dict[str, Any] | None = None
+    udm: UdmPayload | None = None
+    semantic: dict[str, Any] | None = None
+    pagination: dict[str, Any] | None = None
+
+
+class JobHistoryItem(BaseModel):
+    job_id: str
+    status: JobStatus
+    file_a: str
+    file_b: str
+    file_type: str
+    created_at: str
+    updated_at: str
+
+
+class JobHistoryResponse(BaseModel):
+    items: list[JobHistoryItem]
+    total: int

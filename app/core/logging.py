@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import sys
 import time
 from collections.abc import Awaitable, Callable
@@ -11,6 +12,10 @@ from fastapi import Request, Response
 from app.core.config import Settings
 
 REQUEST_ID_HEADER = "X-Request-ID"
+PII_REDACTION_PATTERNS = [
+    re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"),
+    re.compile(r"\b\d{12,19}\b"),
+]
 
 
 class RequestIdFilter(logging.Filter):
@@ -47,7 +52,7 @@ async def request_context_middleware(
     logger.info(
         "request_started method=%s path=%s",
         request.method,
-        request.url.path,
+        _safe_path(request.url.path),
         extra={"request_id": request_id},
     )
 
@@ -57,7 +62,7 @@ async def request_context_middleware(
         logger.exception(
             "request_failed method=%s path=%s",
             request.method,
-            request.url.path,
+            _safe_path(request.url.path),
             extra={"request_id": request_id},
         )
         raise
@@ -67,9 +72,16 @@ async def request_context_middleware(
     logger.info(
         "request_completed method=%s path=%s status_code=%s duration_ms=%s",
         request.method,
-        request.url.path,
+        _safe_path(request.url.path),
         response.status_code,
         duration_ms,
         extra={"request_id": request_id},
     )
     return response
+
+
+def _safe_path(path: str) -> str:
+    redacted = path
+    for pattern in PII_REDACTION_PATTERNS:
+        redacted = pattern.sub("[redacted]", redacted)
+    return redacted

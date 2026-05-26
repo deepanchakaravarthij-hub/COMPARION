@@ -86,7 +86,7 @@ def test_rotated_scan_comparison_reduces_false_positive_noise() -> None:
     rotated = original.rotate(90, expand=True)
     result = compare_files("a.png", "b.png", _png_bytes(original), _png_bytes(rotated))
     assert result["file_type"] == "image"
-    assert result["result_schema_version"] == "2.0"
+    assert result["result_schema_version"] == "2.1"
     assert result["diagnostics"]["preprocessing"][1]["rotation_degrees"] == 270
     assert len(result["changes"]) <= 1
 

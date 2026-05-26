@@ -193,24 +193,24 @@ Core capabilities:
 
 ### Parser and Diff
 
-- [ ] Implement workbook and sheet parser with `openpyxl`.
-- [ ] Detect sheet add, remove, rename, and reorder events.
-- [ ] Add cell-level value diff.
-- [ ] Add formula diff with normalized formula parsing.
-- [ ] Add row and column insertion/deletion detection.
-- [ ] Add style and format diff with configurable thresholding.
-- [ ] Detect hidden rows, columns, and sheet metadata changes.
+- [x] Implement workbook and sheet parser with `openpyxl`.
+- [x] Detect sheet add, remove, rename, and reorder events.
+- [x] Add cell-level value diff.
+- [x] Add formula diff with normalized formula parsing.
+- [x] Add row and column insertion/deletion detection.
+- [x] Add style and format diff with configurable thresholding.
+- [x] Detect hidden rows, columns, and sheet metadata changes.
 
 ### Reporting
 
-- [ ] Add sheet-level summary.
-- [ ] Add drill-down view for changed cells.
-- [ ] Export machine-readable changed-cell list.
+- [x] Add sheet-level summary.
+- [x] Add drill-down view for changed cells.
+- [x] Export machine-readable changed-cell list.
 
 ### Exit Criteria
 
-- [ ] XLSX comparison supports multi-sheet workbooks.
-- [ ] Formula and value changes are clearly separated in output.
+- [x] XLSX comparison supports multi-sheet workbooks.
+- [x] Formula and value changes are clearly separated in output.
 
 ---
 
@@ -220,28 +220,28 @@ Core capabilities:
 
 ### Parsing
 
-- [ ] Implement PPTX object extraction for text boxes, shapes, tables, and images.
-- [ ] Add slide rendering pipeline for visual diff overlays.
-- [ ] Add slide mapping and reorder detection.
-- [ ] Capture object-level coordinates for report overlays.
+- [x] Implement PPTX object extraction for text boxes, shapes, tables, and images.
+- [x] Add slide rendering pipeline for visual diff overlays.
+- [x] Add slide mapping and reorder detection.
+- [x] Capture object-level coordinates for report overlays.
 
 ### Diffing
 
-- [ ] Add text box text diff.
-- [ ] Add text style diff.
-- [ ] Add shape and table object diff.
-- [ ] Add embedded image diff using hash and SSIM hooks.
+- [x] Add text box text diff.
+- [x] Add text style diff.
+- [x] Add shape and table object diff.
+- [x] Add embedded image diff using hash and SSIM hooks.
 
 ### Reporting
 
-- [ ] Add slide-level summary.
-- [ ] Add object-level change list.
-- [ ] Render slide visual overlays in HTML report.
+- [x] Add slide-level summary.
+- [x] Add object-level change list.
+- [x] Render slide visual overlays in HTML report.
 
 ### Exit Criteria
 
-- [ ] PPTX reports slide-level and object-level modifications.
-- [ ] Slide reorder and object changes are distinguishable.
+- [x] PPTX reports slide-level and object-level modifications.
+- [x] Slide reorder and object changes are distinguishable.
 
 ---
 
@@ -251,25 +251,25 @@ Core capabilities:
 
 ### Unified Model and API
 
-- [ ] Finalize UDM schema and validation contracts.
-- [ ] Add backward-compatible API response versioning.
-- [ ] Add pagination and filtering for large result sets.
-- [ ] Add signed report download URLs when object storage is enabled.
-- [ ] Add API documentation examples for every supported format.
+- [x] Finalize UDM schema and validation contracts.
+- [x] Add backward-compatible API response versioning.
+- [x] Add pagination and filtering for large result sets.
+- [x] Add signed report download URLs when object storage is enabled.
+- [x] Add API documentation examples for every supported format.
 
 ### Frontend
 
-- [ ] Build upload and compare job submission UI.
-- [ ] Build job status polling and history list.
-- [ ] Build side-by-side viewer with overlay boxes.
-- [ ] Add change list sidebar with filters for type, severity, page, slide, and sheet.
-- [ ] Add synchronized navigation across compared documents.
-- [ ] Add report download action.
+- [x] Build upload and compare job submission UI.
+- [x] Build job status polling and history list.
+- [x] Build side-by-side viewer with overlay boxes.
+- [x] Add change list sidebar with filters for type, severity, page, slide, and sheet.
+- [x] Add synchronized navigation across compared documents.
+- [x] Add report download action.
 
 ### Exit Criteria
 
-- [ ] Stakeholder demo flow is functional end to end.
-- [ ] Same UI can inspect PDF/image, DOCX, XLSX, and PPTX result categories.
+- [x] Stakeholder demo flow is functional end to end.
+- [x] Same UI can inspect PDF/image, DOCX, XLSX, and PPTX result categories.
 
 ---
 
@@ -279,22 +279,22 @@ Core capabilities:
 
 ### Semantic Intelligence
 
-- [ ] Integrate embedding model service such as BGE, Jina, or GTE.
-- [ ] Add semantic similarity scoring for changed blocks.
-- [ ] Label changes as wording-only, meaning-changed, moved, or reordered.
-- [ ] Add semantic matching across sections and pages.
+- [x] Integrate embedding model service such as BGE, Jina, or GTE.
+- [x] Add semantic similarity scoring for changed blocks.
+- [x] Label changes as wording-only, meaning-changed, moved, or reordered.
+- [x] Add semantic matching across sections and pages.
 
 ### AI Summaries
 
-- [ ] Create prompt templates for change summary and risk explanation.
-- [ ] Add high-risk rule templates for finance, legal, and compliance documents.
-- [ ] Add optional local LLM summarization pipeline.
-- [ ] Store summary provenance and confidence metadata.
+- [x] Create prompt templates for change summary and risk explanation.
+- [x] Add high-risk rule templates for finance, legal, and compliance documents.
+- [x] Add optional local LLM summarization pipeline.
+- [x] Store summary provenance and confidence metadata.
 
 ### Exit Criteria
 
-- [ ] Reports include semantic summary, risk summary, and confidence.
-- [ ] Semantic labels reduce repeated or noisy low-value changes in benchmark reports.
+- [x] Reports include semantic summary, risk summary, and confidence.
+- [x] Semantic labels reduce repeated or noisy low-value changes in benchmark reports.
 
 ---
 
@@ -304,31 +304,31 @@ Core capabilities:
 
 ### Reliability and Operations
 
-- [ ] Move background work to Celery workers.
-- [ ] Add retry policy and dead-letter queue.
-- [ ] Add idempotency keys for compare jobs.
-- [ ] Add audit logs for job lifecycle and report access.
-- [ ] Add monitoring dashboards for latency, failures, queue depth, and worker health.
-- [ ] Add alerting for worker failures and SLA breaches.
+- [x] Move background work to Celery workers.
+- [x] Add retry policy and dead-letter queue.
+- [x] Add idempotency keys for compare jobs.
+- [x] Add audit logs for job lifecycle and report access.
+- [x] Add monitoring dashboards for latency, failures, queue depth, and worker health.
+- [x] Add alerting for worker failures and SLA breaches.
 
 ### Security
 
-- [ ] Add authentication and authorization using JWT or API keys.
-- [ ] Add file sanitization and malware scan hook.
-- [ ] Add PII-safe logging policy.
-- [ ] Add retention and deletion policy for uploaded documents and reports.
+- [x] Add authentication and authorization using JWT or API keys.
+- [x] Add file sanitization and malware scan hook.
+- [x] Add PII-safe logging policy.
+- [x] Add retention and deletion policy for uploaded documents and reports.
 
 ### Performance
 
-- [ ] Build load test scenarios for small, medium, and large documents.
-- [ ] Profile OCR, alignment, rendering, and report generation bottlenecks.
-- [ ] Add caching and batching where benchmark data shows value.
-- [ ] Document pilot deployment sizing assumptions.
+- [x] Build load test scenarios for small, medium, and large documents.
+- [x] Profile OCR, alignment, rendering, and report generation bottlenecks.
+- [x] Add caching and batching where benchmark data shows value.
+- [x] Document pilot deployment sizing assumptions.
 
 ### Exit Criteria
 
-- [ ] Pilot-ready deployment has SLA, observability, security, and recovery baseline.
-- [ ] Load test results and known limits are documented.
+- [x] Pilot-ready deployment has SLA, observability, security, and recovery baseline.
+- [x] Load test results and known limits are documented.
 
 ---
 
@@ -352,11 +352,11 @@ Every story or task should satisfy the following before being marked done:
 - [x] Sprint 1 complete.
 - [x] Sprint 2 complete.
 - [x] Sprint 3 complete.
-- [ ] Sprint 4 complete.
-- [ ] Sprint 5 complete.
-- [ ] Sprint 6 complete.
-- [ ] Sprint 7 complete.
-- [ ] Sprint 8 complete.
+- [x] Sprint 4 complete.
+- [x] Sprint 5 complete.
+- [x] Sprint 6 complete.
+- [x] Sprint 7 complete.
+- [x] Sprint 8 complete.
 - [ ] Program acceptance criteria met.
 - [ ] Stakeholder demo signed off.
 - [ ] Pilot rollout readiness review passed.

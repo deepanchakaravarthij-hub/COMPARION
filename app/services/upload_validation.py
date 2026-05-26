@@ -1,22 +1,29 @@
 from __future__ import annotations
 
 import hashlib
+import subprocess
 
 from fastapi import HTTPException, UploadFile
 
 from app.core.config import get_settings
 from app.utils.filetype import detect_type
 
-SUPPORTED_TYPES = {"pdf", "image", "docx"}
+SUPPORTED_TYPES = {"pdf", "image", "docx", "xlsx", "pptx"}
 SUPPORTED_MIME_TYPES = {
     "application/pdf": "pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
     "image/png": "image",
     "image/jpeg": "image",
     "image/tiff": "image",
     "image/bmp": "image",
     "image/webp": "image",
 }
+SUSPICIOUS_MAGIC_HEADERS = [
+    b"MZ",  # Windows executable
+    b"\x7fELF",  # Linux binary
+]
 
 
 class ValidatedUpload:
@@ -56,6 +63,8 @@ async def validate_upload(upload: UploadFile) -> ValidatedUpload:
     if expected_type is not None and expected_type != file_type:
         raise HTTPException(status_code=415, detail="File extension and MIME type do not match")
 
+    _scan_for_malware(content)
+
     return ValidatedUpload(
         filename=upload.filename,
         content_type=content_type,
@@ -63,3 +72,26 @@ async def validate_upload(upload: UploadFile) -> ValidatedUpload:
         content=content,
         sha256=hashlib.sha256(content).hexdigest(),
     )
+
+
+def _scan_for_malware(content: bytes) -> None:
+    settings = get_settings()
+    if any(content.startswith(header) for header in SUSPICIOUS_MAGIC_HEADERS):
+        raise HTTPException(status_code=400, detail="Blocked suspicious binary upload")
+    if not settings.malware_scan_enabled or not settings.malware_scan_command:
+        return
+
+    command = settings.malware_scan_command
+    try:
+        result = subprocess.run(
+            command,
+            input=content,
+            capture_output=True,
+            shell=True,
+            check=False,
+        )
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Malware scan hook failed: {exc}") from exc
+
+    if result.returncode != 0:
+        raise HTTPException(status_code=400, detail="Malware scan rejected upload")

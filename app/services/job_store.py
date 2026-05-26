@@ -56,6 +56,33 @@ def init_db() -> None:
                 completed_at TEXT
             )
             """)
+        connection.execute("""
+            CREATE TABLE IF NOT EXISTS idempotency_keys (
+                idempotency_key TEXT PRIMARY KEY,
+                request_hash TEXT NOT NULL,
+                job_id TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            """)
+        connection.execute("""
+            CREATE TABLE IF NOT EXISTS audit_events (
+                event_id TEXT PRIMARY KEY,
+                job_id TEXT,
+                request_id TEXT,
+                event_type TEXT NOT NULL,
+                details_json TEXT,
+                created_at TEXT NOT NULL
+            )
+            """)
+        connection.execute("""
+            CREATE TABLE IF NOT EXISTS dead_letter_jobs (
+                dead_letter_id TEXT PRIMARY KEY,
+                job_id TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                payload_json TEXT,
+                created_at TEXT NOT NULL
+            )
+            """)
 
 
 def create_job(
@@ -106,6 +133,89 @@ def get_job(job_id: str) -> JobRecord | None:
     else:
         record["result"] = None
     return record
+
+
+def get_or_create_idempotent_job(
+    idempotency_key: str,
+    request_hash: str,
+    create_job_fn: Any,
+) -> tuple[str, bool]:
+    init_db()
+    now = _utc_now()
+    with _connect() as connection:
+        existing = connection.execute(
+            """
+            SELECT job_id, request_hash
+            FROM idempotency_keys
+            WHERE idempotency_key = ?
+            """,
+            (idempotency_key,),
+        ).fetchone()
+        if existing is not None:
+            if existing["request_hash"] != request_hash:
+                raise ValueError("Idempotency key was already used for a different request payload")
+            return str(existing["job_id"]), True
+
+        job_id = str(create_job_fn())
+        connection.execute(
+            """
+            INSERT INTO idempotency_keys (idempotency_key, request_hash, job_id, created_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (idempotency_key, request_hash, job_id, now),
+        )
+        return job_id, False
+
+
+def list_jobs(
+    limit: int = 20,
+    offset: int = 0,
+    status: str | None = None,
+) -> tuple[list[JobRecord], int]:
+    init_db()
+    where = ""
+    params: list[Any] = []
+    if status:
+        where = "WHERE status = ?"
+        params.append(status)
+
+    with _connect() as connection:
+        total_row = connection.execute(
+            f"SELECT COUNT(*) as total FROM jobs {where}",
+            tuple(params),
+        ).fetchone()
+        rows = connection.execute(
+            f"""
+            SELECT job_id, status, file_a, file_b, file_a_type, created_at, updated_at
+            FROM jobs
+            {where}
+            ORDER BY created_at DESC
+            LIMIT ? OFFSET ?
+            """,
+            tuple(params + [limit, offset]),
+        ).fetchall()
+
+    total = int(total_row["total"]) if total_row else 0
+    records = [dict(row) for row in rows]
+    for record in records:
+        record["file_type"] = record.pop("file_a_type")
+    return records, total
+
+
+def summarize_job_statuses() -> dict[str, int]:
+    init_db()
+    statuses = {"queued": 0, "running": 0, "completed": 0, "failed": 0, "cancelled": 0}
+    with _connect() as connection:
+        rows = connection.execute(
+            """
+            SELECT status, COUNT(*) as total
+            FROM jobs
+            GROUP BY status
+            """
+        ).fetchall()
+    for row in rows:
+        statuses[str(row["status"])] = int(row["total"])
+    return statuses
 
 
 def set_job_files(job_id: str, file_a_path: str, file_b_path: str) -> None:
@@ -179,6 +289,78 @@ def set_job_failed(job_id: str, error_code: str, error_message: str) -> None:
             """,
             ("failed", error_code, error_message, now, now, job_id),
         )
+
+
+def add_audit_event(
+    event_type: str,
+    job_id: str | None = None,
+    request_id: str | None = None,
+    details: dict[str, Any] | None = None,
+) -> None:
+    now = _utc_now()
+    with _connect() as connection:
+        connection.execute(
+            """
+            INSERT INTO audit_events (
+                event_id, job_id, request_id, event_type, details_json, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(uuid4()),
+                job_id,
+                request_id,
+                event_type,
+                json.dumps(details or {}, sort_keys=True),
+                now,
+            ),
+        )
+
+
+def add_dead_letter_job(
+    job_id: str,
+    reason: str,
+    payload: dict[str, Any] | None = None,
+) -> None:
+    now = _utc_now()
+    with _connect() as connection:
+        connection.execute(
+            """
+            INSERT INTO dead_letter_jobs (dead_letter_id, job_id, reason, payload_json, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                str(uuid4()),
+                job_id,
+                reason,
+                json.dumps(payload or {}, sort_keys=True),
+                now,
+            ),
+        )
+
+
+def cleanup_expired_jobs(retention_days: int) -> dict[str, int]:
+    init_db()
+    with _connect() as connection:
+        rows = connection.execute(
+            """
+            SELECT job_id, file_a_path, file_b_path, result_path, report_path
+            FROM jobs
+            WHERE completed_at IS NOT NULL
+              AND julianday('now') - julianday(completed_at) > ?
+            """,
+            (retention_days,),
+        ).fetchall()
+        job_ids = [str(row["job_id"]) for row in rows]
+        deleted_count = 0
+        if job_ids:
+            placeholders = ",".join("?" for _ in job_ids)
+            connection.execute(
+                f"DELETE FROM jobs WHERE job_id IN ({placeholders})",
+                tuple(job_ids),
+            )
+            deleted_count = len(job_ids)
+    return {"deleted_jobs": deleted_count, "expired_artifacts": len(rows)}
 
 
 init_db()

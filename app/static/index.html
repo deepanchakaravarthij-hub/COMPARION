@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>COMPARION Viewer</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; color: #1f2937; }
+    header { padding: 12px 16px; border-bottom: 1px solid #e5e7eb; display: flex; gap: 12px; align-items: center; }
+    main { display: grid; grid-template-columns: 300px 1fr; height: calc(100vh - 64px); }
+    aside { border-right: 1px solid #e5e7eb; overflow: auto; padding: 12px; }
+    section { padding: 12px; overflow: auto; }
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+    .card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px; margin-bottom: 10px; background: #fff; }
+    .changes { max-height: 300px; overflow: auto; border: 1px solid #e5e7eb; border-radius: 6px; }
+    .change { padding: 8px; border-bottom: 1px solid #f3f4f6; cursor: pointer; }
+    .change.active { background: #eef2ff; }
+    .pane-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .pane { border: 1px solid #e5e7eb; border-radius: 8px; min-height: 220px; position: relative; padding: 10px; }
+    .overlay { position: absolute; border: 2px solid #ef4444; pointer-events: none; }
+    .muted { color: #6b7280; font-size: 12px; }
+    button, select, input { padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; }
+    button { background: #111827; color: #fff; border: none; cursor: pointer; }
+    button.secondary { background: #fff; color: #111827; border: 1px solid #d1d5db; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border-bottom: 1px solid #f3f4f6; text-align: left; padding: 6px; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <header>
+    <strong>COMPARION Viewer</strong>
+    <span class="muted">Upload, compare, filter, and inspect changes.</span>
+  </header>
+  <main>
+    <aside>
+      <div class="card">
+        <div class="row"><strong>New Compare Job</strong></div>
+        <div class="row"><input id="fileA" type="file"></div>
+        <div class="row"><input id="fileB" type="file"></div>
+        <div class="row">
+          <button id="submitBtn">Compare</button>
+          <span id="submitStatus" class="muted"></span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="row"><strong>Job History</strong></div>
+        <div class="row">
+          <button class="secondary" id="refreshJobs">Refresh</button>
+        </div>
+        <div class="changes" id="jobHistory"></div>
+      </div>
+      <div class="card">
+        <div class="row"><strong>Filters</strong></div>
+        <div class="row">
+          <select id="categoryFilter"><option value="">Category</option></select>
+          <select id="severityFilter"><option value="">Severity</option></select>
+        </div>
+        <div class="row">
+          <input id="searchFilter" placeholder="Search message">
+          <button class="secondary" id="applyFilters">Apply</button>
+        </div>
+      </div>
+    </aside>
+    <section>
+      <div class="row">
+        <strong id="jobTitle">No job selected</strong>
+        <button id="reportBtn" class="secondary" disabled>Download Report</button>
+        <button id="prevChange" class="secondary" disabled>Prev</button>
+        <button id="nextChange" class="secondary" disabled>Next</button>
+      </div>
+      <div class="row muted" id="jobSummary"></div>
+      <div class="pane-grid">
+        <div class="pane">
+          <strong>Document A</strong>
+          <div id="paneARef" class="muted"></div>
+          <div id="overlayA"></div>
+        </div>
+        <div class="pane">
+          <strong>Document B</strong>
+          <div id="paneBRef" class="muted"></div>
+          <div id="overlayB"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="row"><strong>Changes</strong></div>
+        <div class="changes" id="changesList"></div>
+      </div>
+      <div class="card">
+        <div class="row"><strong>Pagination</strong></div>
+        <div class="row">
+          <button class="secondary" id="prevPage">Prev Page</button>
+          <button class="secondary" id="nextPage">Next Page</button>
+          <span class="muted" id="pageInfo"></span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="row"><strong>Job History Table</strong></div>
+        <table>
+          <thead><tr><th>Job</th><th>Status</th><th>Type</th><th>Files</th></tr></thead>
+          <tbody id="historyTable"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+  <script>
+    const state = {
+      selectedJob: null,
+      result: null,
+      filteredChanges: [],
+      selectedIndex: -1,
+      offset: 0,
+      limit: 50,
+      history: []
+    };
+
+    async function api(path, options = {}) {
+      const res = await fetch(path, options);
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    }
+
+    function refLabel(change) {
+      const ref = change.source_ref || {};
+      const keys = ["document", "page", "slide", "sheet", "cell", "paragraph", "run", "table", "row", "column"];
+      return keys.filter((key) => ref[key] !== undefined && ref[key] !== null).map((key) => `${key}=${ref[key]}`).join(", ");
+    }
+
+    function renderOverlay(containerId, bbox) {
+      const container = document.getElementById(containerId);
+      container.innerHTML = "";
+      if (!bbox) return;
+      const box = document.createElement("div");
+      box.className = "overlay";
+      box.style.left = `${Math.round((bbox.x || 0) * 100)}%`;
+      box.style.top = `${Math.round((bbox.y || 0) * 100)}%`;
+      box.style.width = `${Math.round((bbox.width || 0.1) * 100)}%`;
+      box.style.height = `${Math.round((bbox.height || 0.1) * 100)}%`;
+      container.appendChild(box);
+    }
+
+    function renderChangeSelection() {
+      const change = state.filteredChanges[state.selectedIndex];
+      document.getElementById("prevChange").disabled = state.selectedIndex <= 0;
+      document.getElementById("nextChange").disabled = state.selectedIndex < 0 || state.selectedIndex >= state.filteredChanges.length - 1;
+      if (!change) {
+        document.getElementById("paneARef").textContent = "No change selected";
+        document.getElementById("paneBRef").textContent = "No change selected";
+        renderOverlay("overlayA");
+        renderOverlay("overlayB");
+        return;
+      }
+      const label = refLabel(change);
+      document.getElementById("paneARef").textContent = `Locator: ${label}`;
+      document.getElementById("paneBRef").textContent = `Locator: ${label}`;
+      renderOverlay("overlayA", change.bbox);
+      renderOverlay("overlayB", change.bbox);
+    }
+
+    function renderChanges() {
+      const root = document.getElementById("changesList");
+      root.innerHTML = "";
+      state.filteredChanges.forEach((change, index) => {
+        const item = document.createElement("div");
+        item.className = `change ${index === state.selectedIndex ? "active" : ""}`;
+        item.innerHTML = `<div><strong>${change.id}</strong> ${change.category} / ${change.severity}</div><div>${change.message}</div><div class="muted">${refLabel(change)}</div>`;
+        item.onclick = () => {
+          state.selectedIndex = index;
+          renderChanges();
+          renderChangeSelection();
+        };
+        root.appendChild(item);
+      });
+      renderChangeSelection();
+    }
+
+    function applyClientFilters() {
+      if (!state.result) return;
+      const category = document.getElementById("categoryFilter").value;
+      const severity = document.getElementById("severityFilter").value;
+      const needle = document.getElementById("searchFilter").value.trim().toLowerCase();
+      state.filteredChanges = state.result.changes.filter((change) => {
+        if (category && change.category !== category) return false;
+        if (severity && change.severity !== severity) return false;
+        if (needle && !String(change.message).toLowerCase().includes(needle)) return false;
+        return true;
+      });
+      state.selectedIndex = state.filteredChanges.length ? 0 : -1;
+      renderChanges();
+    }
+
+    async function loadResult() {
+      if (!state.selectedJob) return;
+      const params = new URLSearchParams({ result_schema_version: "2.1", offset: String(state.offset), limit: String(state.limit) });
+      const category = document.getElementById("categoryFilter").value;
+      const severity = document.getElementById("severityFilter").value;
+      const search = document.getElementById("searchFilter").value.trim();
+      if (category) params.set("category", category);
+      if (severity) params.set("severity", severity);
+      if (search) params.set("search", search);
+      state.result = await api(`/v1/jobs/${state.selectedJob}/result?${params.toString()}`);
+      state.filteredChanges = [...state.result.changes];
+      state.selectedIndex = state.filteredChanges.length ? 0 : -1;
+      document.getElementById("jobTitle").textContent = `Job ${state.selectedJob}`;
+      document.getElementById("jobSummary").textContent = `${state.result.summary} | schema ${state.result.result_schema_version}`;
+      const p = state.result.pagination || {};
+      document.getElementById("pageInfo").textContent = `offset=${p.offset || 0}, limit=${p.limit || "all"}, filtered=${p.total_filtered || 0}, total=${p.total_changes || 0}`;
+      renderChanges();
+    }
+
+    async function loadJobs() {
+      const payload = await api("/v1/jobs?limit=50");
+      state.history = payload.items;
+      const root = document.getElementById("jobHistory");
+      const table = document.getElementById("historyTable");
+      root.innerHTML = "";
+      table.innerHTML = "";
+      payload.items.forEach((item) => {
+        const row = document.createElement("div");
+        row.className = "change";
+        row.innerHTML = `<div><strong>${item.job_id.slice(0, 8)}</strong> ${item.status}</div><div class="muted">${item.file_type} | ${item.file_a} vs ${item.file_b}</div>`;
+        row.onclick = async () => {
+          state.selectedJob = item.job_id;
+          state.offset = 0;
+          await loadResult();
+          document.getElementById("reportBtn").disabled = false;
+        };
+        root.appendChild(row);
+
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${item.job_id.slice(0, 8)}</td><td>${item.status}</td><td>${item.file_type}</td><td>${item.file_a} vs ${item.file_b}</td>`;
+        table.appendChild(tr);
+      });
+    }
+
+    async function submitCompare() {
+      const fileA = document.getElementById("fileA").files[0];
+      const fileB = document.getElementById("fileB").files[0];
+      if (!fileA || !fileB) return;
+      const data = new FormData();
+      data.append("file_a", fileA);
+      data.append("file_b", fileB);
+      document.getElementById("submitStatus").textContent = "Submitting...";
+      const payload = await api("/v1/compare", { method: "POST", body: data });
+      document.getElementById("submitStatus").textContent = `Queued ${payload.job_id.slice(0, 8)}`;
+      await pollJob(payload.job_id);
+      await loadJobs();
+    }
+
+    async function pollJob(jobId) {
+      for (let i = 0; i < 120; i += 1) {
+        const status = await api(`/v1/jobs/${jobId}`);
+        if (status.status === "completed" || status.status === "failed") return status.status;
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+      return "timeout";
+    }
+
+    async function downloadReport() {
+      if (!state.selectedJob) return;
+      const link = await api(`/v1/jobs/${state.selectedJob}/report-link`);
+      window.open(link.url, "_blank");
+    }
+
+    function setupFilterOptions() {
+      ["", "text", "formula", "sheet", "slide", "table", "image", "formatting", "structure", "visual", "metadata", "file"].forEach((value) => {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = value || "Category";
+        document.getElementById("categoryFilter").appendChild(option);
+      });
+      ["", "low", "medium", "high"].forEach((value) => {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = value || "Severity";
+        document.getElementById("severityFilter").appendChild(option);
+      });
+    }
+
+    document.getElementById("submitBtn").onclick = submitCompare;
+    document.getElementById("refreshJobs").onclick = loadJobs;
+    document.getElementById("applyFilters").onclick = loadResult;
+    document.getElementById("reportBtn").onclick = downloadReport;
+    document.getElementById("prevChange").onclick = () => {
+      state.selectedIndex = Math.max(0, state.selectedIndex - 1);
+      renderChanges();
+    };
+    document.getElementById("nextChange").onclick = () => {
+      state.selectedIndex = Math.min(state.filteredChanges.length - 1, state.selectedIndex + 1);
+      renderChanges();
+    };
+    document.getElementById("prevPage").onclick = async () => {
+      state.offset = Math.max(0, state.offset - state.limit);
+      await loadResult();
+    };
+    document.getElementById("nextPage").onclick = async () => {
+      state.offset += state.limit;
+      await loadResult();
+    };
+
+    setupFilterOptions();
+    loadJobs();
+  </script>
+</body>
+</html>

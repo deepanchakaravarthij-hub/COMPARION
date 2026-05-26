@@ -48,6 +48,35 @@ class Settings:
     ocr_language: str = getenv("COMPARION_OCR_LANGUAGE", "en")
     alignment_enabled: bool = _get_bool("COMPARION_ALIGNMENT_ENABLED", True)
     ecc_alignment_enabled: bool = _get_bool("COMPARION_ECC_ALIGNMENT_ENABLED", False)
+    object_storage_enabled: bool = _get_bool("COMPARION_OBJECT_STORAGE_ENABLED", False)
+    signed_url_secret: str = getenv("COMPARION_SIGNED_URL_SECRET", "comparion-local-secret")
+    signed_url_ttl_seconds: int = _get_int("COMPARION_SIGNED_URL_TTL_SECONDS", 900)
+    semantic_enabled: bool = _get_bool("COMPARION_SEMANTIC_ENABLED", True)
+    embedding_model_service: str = getenv("COMPARION_EMBEDDING_MODEL_SERVICE", "tfidf-local")
+    semantic_similarity_threshold: float = _get_float(
+        "COMPARION_SEMANTIC_SIMILARITY_THRESHOLD",
+        0.75,
+    )
+    local_summary_enabled: bool = _get_bool("COMPARION_LOCAL_SUMMARY_ENABLED", True)
+    auth_required: bool = _get_bool("COMPARION_AUTH_REQUIRED", False)
+    auth_api_key: str = getenv("COMPARION_AUTH_API_KEY", "")
+    auth_bearer_token: str = getenv("COMPARION_AUTH_BEARER_TOKEN", "")
+    max_retry_attempts: int = _get_int("COMPARION_MAX_RETRY_ATTEMPTS", 3)
+    retry_backoff_ms: int = _get_int("COMPARION_RETRY_BACKOFF_MS", 250)
+    queue_mode: str = getenv("COMPARION_QUEUE_MODE", "inline")
+    celery_broker_url: str = getenv("COMPARION_CELERY_BROKER_URL", "redis://localhost:6379/0")
+    celery_result_backend: str = getenv("COMPARION_CELERY_RESULT_BACKEND", "redis://localhost:6379/1")
+    retention_days: int = _get_int("COMPARION_RETENTION_DAYS", 7)
+    malware_scan_enabled: bool = _get_bool("COMPARION_MALWARE_SCAN_ENABLED", False)
+    malware_scan_command: str = getenv("COMPARION_MALWARE_SCAN_COMMAND", "")
+    metrics_alert_failure_rate_threshold: float = _get_float(
+        "COMPARION_METRICS_ALERT_FAILURE_RATE_THRESHOLD",
+        0.15,
+    )
+    metrics_alert_queue_depth_threshold: int = _get_int(
+        "COMPARION_METRICS_ALERT_QUEUE_DEPTH_THRESHOLD",
+        20,
+    )
 
 
 @lru_cache
