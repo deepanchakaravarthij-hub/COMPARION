@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from os import getenv
 from pathlib import Path
@@ -25,6 +25,11 @@ def _get_bool(name: str, default: bool) -> bool:
     if value is None:
         return default
     return value.lower() in {"1", "true", "yes", "on"}
+
+
+def _get_csv(name: str, default: str) -> list[str]:
+    value = getenv(name, default)
+    return [item.strip() for item in value.split(",") if item.strip()]
 
 
 @dataclass(frozen=True)
@@ -76,6 +81,13 @@ class Settings:
     metrics_alert_queue_depth_threshold: int = _get_int(
         "COMPARION_METRICS_ALERT_QUEUE_DEPTH_THRESHOLD",
         20,
+    )
+    cors_allowed_origins: list[str] = field(
+        default_factory=lambda: _get_csv(
+            "COMPARION_CORS_ALLOWED_ORIGINS",
+            "http://localhost:3000,http://127.0.0.1:3000,"
+            "http://localhost:3001,http://127.0.0.1:3001",
+        )
     )
 
 

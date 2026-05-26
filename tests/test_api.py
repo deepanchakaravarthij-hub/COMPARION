@@ -209,6 +209,18 @@ def test_request_id_is_preserved() -> None:
     assert res.headers["X-Request-ID"] == "test-request-id"
 
 
+def test_cors_allows_nextjs_dev_origin() -> None:
+    res = client.options(
+        "/v1/jobs?limit=20",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert res.status_code == 200
+    assert res.headers["access-control-allow-origin"] == "http://localhost:3000"
+
+
 def test_compare_pdf_and_fetch_result_and_report() -> None:
     files = {
         "file_a": ("a.pdf", _pdf_bytes("hello contract"), "application/pdf"),
@@ -246,6 +258,21 @@ def test_compare_pdf_and_fetch_result_and_report() -> None:
     artifact_res = client.get(f"/v1/jobs/{job_id}/artifact/a")
     assert artifact_res.status_code == 200
     assert artifact_res.content.startswith(b"%PDF")
+
+    preview_manifest_res = client.get(f"/v1/jobs/{job_id}/preview/a/manifest")
+    assert preview_manifest_res.status_code == 200
+    assert preview_manifest_res.json()["page_count"] == 1
+
+    preview_page_res = client.get(f"/v1/jobs/{job_id}/preview/a/page/1")
+    assert preview_page_res.status_code == 200
+    assert preview_page_res.headers["content-type"] == "image/png"
+    assert preview_page_res.content.startswith(b"\x89PNG")
+
+    comparison_pdf_res = client.get(f"/v1/jobs/{job_id}/comparison.pdf")
+    assert comparison_pdf_res.status_code == 200
+    assert comparison_pdf_res.headers["content-type"] == "application/pdf"
+    assert comparison_pdf_res.content.startswith(b"%PDF")
+    assert "filename*=" in comparison_pdf_res.headers["content-disposition"]
 
 
 def test_compare_docx_and_fetch_result_and_report() -> None:

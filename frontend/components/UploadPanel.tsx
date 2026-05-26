@@ -33,40 +33,56 @@ export function UploadPanel() {
     mutation.mutate({ fileA, fileB, idempotencyKey: requestKey });
   }
 
+  function swapFiles() {
+    setFileA(fileB);
+    setFileB(fileA);
+  }
+
   const validation = validationMessage(fileA, fileB);
 
   return (
     <section className="panel">
       <div className="panel-header">
         <h2>Upload Documents</h2>
-        <p>Compare same-type pairs across PDF, image, DOCX, XLSX, and PPTX.</p>
+        <p>
+          Choose the left and right document order. Exports use
+          <strong> left.pdf → right.pdf - Draftable.pdf</strong>.
+        </p>
       </div>
       <form className="panel-body" onSubmit={handleSubmit}>
         <div className="drop-zone">
-          <label htmlFor="file-a">Original document</label>
+          <label htmlFor="file-a">Left document</label>
           <input
             id="file-a"
             name="file-a"
             onChange={(event) => setFileA(event.target.files?.[0] ?? null)}
             type="file"
           />
-          {fileA ? <strong>{fileA.name}</strong> : <span className="muted">Select file A</span>}
+          {fileA ? <strong>{fileA.name}</strong> : <span className="muted">Select left file</span>}
         </div>
         <div className="drop-zone">
-          <label htmlFor="file-b">Updated document</label>
+          <label htmlFor="file-b">Right document</label>
           <input
             id="file-b"
             name="file-b"
             onChange={(event) => setFileB(event.target.files?.[0] ?? null)}
             type="file"
           />
-          {fileB ? <strong>{fileB.name}</strong> : <span className="muted">Select file B</span>}
+          {fileB ? <strong>{fileB.name}</strong> : <span className="muted">Select right file</span>}
         </div>
         {validation ? <p className="badge warning">{validation}</p> : null}
         {mutation.error ? <p className="badge danger">{mutation.error.message}</p> : null}
         <div className="controls">
           <button className="button" disabled={Boolean(validation) || mutation.isPending} type="submit">
             {mutation.isPending ? "Submitting..." : "Compare files"}
+          </button>
+          <button
+            className="button secondary"
+            disabled={!fileA && !fileB}
+            onClick={swapFiles}
+            type="button"
+          >
+            Swap left/right
           </button>
           <span className="muted">
             Idempotency key: {idempotencyKey ? idempotencyKey.slice(0, 8) : "created on submit"}

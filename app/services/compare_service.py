@@ -16,7 +16,12 @@ from app.services.comparison.debug_artifacts import debug_artifact, save_debug_i
 from app.services.comparison.docx_engine import compare_docx_documents
 from app.services.comparison.image_engine import load_normalized_image, visual_change
 from app.services.comparison.ocr import filter_tokens, get_ocr_engine
-from app.services.comparison.pdf_engine import extract_text, render_pages
+from app.services.comparison.pdf_engine import (
+    extract_page_words,
+    extract_text,
+    render_pages,
+    word_diff_page,
+)
 from app.services.comparison.pptx_engine import compare_pptx_presentations
 from app.services.comparison.preprocessing import PreprocessedImage, preprocess_image
 from app.services.comparison.text_diff import token_changes
@@ -95,20 +100,10 @@ def _compare_pdf(
     artifacts: list[dict[str, Any]] = []
     ocr_confidences: list[float] = []
 
-    text_a = extract_text(content_a)
-    text_b = extract_text(content_b)
-
     pages_a = render_pages(content_a)
     pages_b = render_pages(content_b)
-
-    if not text_a.strip() and pages_a:
-        text_a, confidence_a = _ocr_text(pages_a[0])
-        ocr_confidences.append(confidence_a)
-    if not text_b.strip() and pages_b:
-        text_b, confidence_b = _ocr_text(pages_b[0])
-        ocr_confidences.append(confidence_b)
-
-    changes.extend(token_changes(text_a, text_b))
+    word_pages_a = extract_page_words(content_a)
+    word_pages_b = extract_page_words(content_b)
 
     max_pages = max(len(pages_a), len(pages_b))
     for index in range(max_pages):
@@ -126,6 +121,23 @@ def _compare_pdf(
                 )
             )
             continue
+
+        # Per-page word-level text diff with normalized bounding boxes
+        wa = word_pages_a[index] if index < len(word_pages_a) else []
+        wb = word_pages_b[index] if index < len(word_pages_b) else []
+        if wa or wb:
+            changes.extend(word_diff_page(wa, wb, page))
+        else:
+            # Scanned/image-only page — fall back to OCR token diff (no spatial positions)
+            text_a = extract_text(content_a)
+            text_b = extract_text(content_b)
+            if not text_a.strip() and pages_a:
+                text_a, confidence_a = _ocr_text(pages_a[index])
+                ocr_confidences.append(confidence_a)
+            if not text_b.strip() and pages_b:
+                text_b, confidence_b = _ocr_text(pages_b[index])
+                ocr_confidences.append(confidence_b)
+            changes.extend(token_changes(text_a, text_b))
 
         processed_a, processed_b, page_preprocessing = _prepare_pair(pages_a[index], pages_b[index])
         preprocessing.extend(_page_metadata(page, page_preprocessing))

@@ -37,8 +37,11 @@ This starts:
 - `GET /v1/jobs/{job_id}/result`
 - `GET /v1/jobs/{job_id}/report-link`
 - `GET /v1/jobs/{job_id}/report.html`
+- `GET /v1/jobs/{job_id}/comparison.pdf`
 - `GET /v1/jobs/{job_id}/artifact-link/{label}`
 - `GET /v1/jobs/{job_id}/artifact/{label}`
+- `GET /v1/jobs/{job_id}/preview/{label}/manifest`
+- `GET /v1/jobs/{job_id}/preview/{label}/page/{page}`
 - `GET /v1/metrics`
 - `POST /v1/ops/retention/cleanup`
 - `GET /viewer`

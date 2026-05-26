@@ -8,8 +8,11 @@
 - `GET /v1/jobs/{job_id}/result` fetch result JSON with schema versioning, filtering, and pagination.
 - `GET /v1/jobs/{job_id}/report-link` fetch report URL (signed when object storage mode is enabled).
 - `GET /v1/jobs/{job_id}/report.html` fetch HTML report.
+- `GET /v1/jobs/{job_id}/comparison.pdf` fetch Draftable-style interleaved PDF export.
 - `GET /v1/jobs/{job_id}/artifact-link/{label}` fetch artifact URL for `a` or `b`.
 - `GET /v1/jobs/{job_id}/artifact/{label}` fetch original uploaded artifact for native viewers.
+- `GET /v1/jobs/{job_id}/preview/{label}/manifest` fetch PDF/image preview metadata.
+- `GET /v1/jobs/{job_id}/preview/{label}/page/{page}` fetch server-rendered preview PNG.
 - `GET /viewer` open built-in operator viewer UI.
 
 ## Compare Request
@@ -92,6 +95,15 @@ Next.js native viewers should request original uploads using:
 When object storage mode is enabled, these links include signed `token` and `expires` query
 parameters. The artifact endpoint records audit events and returns the original upload with an
 appropriate media type.
+
+PDF/image viewers can avoid browser-native iframe chrome by using preview endpoints. The manifest
+returns `page_count`; each page endpoint returns a PNG for a clean side-by-side canvas.
+
+## Draftable-Style PDF Export
+
+For PDF comparisons, `GET /v1/jobs/{job_id}/comparison.pdf` returns an interleaved PDF export with
+a cover page. The filename follows the selected upload order:
+`left-file.pdf → right-file.pdf - Draftable.pdf`.
 
 ## Format Examples
 

@@ -40,7 +40,43 @@ test("home page exposes upload and history workflow", async ({ page }) => {
 });
 
 async function mockCompletedJob(page: import("@playwright/test").Page, fileType: string) {
-  await page.route("**/v1/jobs/job-123", async (route) => {
+  await page.route("**/v1/jobs/job-123**", async (route) => {
+    const url = route.request().url();
+    if (url.includes("/result")) {
+      await route.fulfill({ contentType: "application/json", json: resultPayload(fileType) });
+      return;
+    }
+    if (url.includes("/artifact-link/a")) {
+      await route.fulfill({
+        contentType: "application/json",
+        json: { url: "/mock/a", signed: false, label: "a" }
+      });
+      return;
+    }
+    if (url.includes("/artifact-link/b")) {
+      await route.fulfill({
+        contentType: "application/json",
+        json: { url: "/mock/b", signed: false, label: "b" }
+      });
+      return;
+    }
+    if (url.includes("/preview/") && url.includes("/manifest")) {
+      await route.fulfill({
+        contentType: "application/json",
+        json: { label: url.includes("/preview/b/") ? "b" : "a", file_type: fileType, page_count: 1 }
+      });
+      return;
+    }
+    if (url.includes("/preview/") && url.includes("/page/1")) {
+      await route.fulfill({
+        body: Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
+          "base64"
+        ),
+        contentType: "image/png"
+      });
+      return;
+    }
     await route.fulfill({
       contentType: "application/json",
       json: {
@@ -53,24 +89,6 @@ async function mockCompletedJob(page: import("@playwright/test").Page, fileType:
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       }
-    });
-  });
-  await page.route("**/v1/jobs/job-123/result?result_schema_version=2.1", async (route) => {
-    await route.fulfill({
-      contentType: "application/json",
-      json: resultPayload(fileType)
-    });
-  });
-  await page.route("**/v1/jobs/job-123/artifact-link/a", async (route) => {
-    await route.fulfill({
-      contentType: "application/json",
-      json: { url: "/mock/a", signed: false, label: "a" }
-    });
-  });
-  await page.route("**/v1/jobs/job-123/artifact-link/b", async (route) => {
-    await route.fulfill({
-      contentType: "application/json",
-      json: { url: "/mock/b", signed: false, label: "b" }
     });
   });
   await page.route("**/mock/**", async (route) => {

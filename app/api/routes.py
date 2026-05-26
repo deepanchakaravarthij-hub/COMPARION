@@ -5,11 +5,14 @@ import hmac
 import json
 import logging
 import time
+from io import BytesIO
 from typing import Annotated, Any
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
+import fitz  # type: ignore[import-untyped]
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Query, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
+from PIL import Image
 from pydantic import ValidationError
 
 from app.core.config import get_settings
@@ -260,6 +263,43 @@ def job_report_link(request: Request, job_id: str) -> dict[str, Any]:
     return payload
 
 
+@router.get("/jobs/{job_id}/comparison.pdf")
+def job_comparison_pdf(request: Request, job_id: str) -> Response:
+    _require_auth(request)
+    job = _get_existing_job(job_id)
+    if job["status"] != "completed":
+        raise HTTPException(status_code=409, detail="Job not completed")
+    if job["file_a_type"] != "pdf" or job["file_b_type"] != "pdf":
+        raise HTTPException(status_code=415, detail="Comparison PDF export is available for PDFs")
+
+    file_a_path = _get_artifact_path(job, "a")
+    file_b_path = _get_artifact_path(job, "b")
+    pdf_bytes = _build_draftable_pdf_export(
+        left_name=str(job["file_a"]),
+        right_name=str(job["file_b"]),
+        left_content=storage.read_bytes(file_a_path),
+        right_content=storage.read_bytes(file_b_path),
+    )
+    filename = f'{job["file_a"]} \u2192 {job["file_b"]} - Draftable.pdf'
+    add_audit_event(
+        event_type="comparison_pdf_exported",
+        job_id=job_id,
+        request_id=getattr(request.state, "request_id", None),
+        details={"filename": filename},
+    )
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": (
+                "attachment; "
+                'filename="comparison.pdf"; '
+                f"filename*=UTF-8''{quote(filename)}"
+            )
+        },
+    )
+
+
 @router.get("/jobs/{job_id}/artifact/{label}")
 def job_artifact(
     request: Request,
@@ -270,12 +310,7 @@ def job_artifact(
 ) -> FileResponse:
     _require_auth(request)
     job = _get_existing_job(job_id)
-    artifact_path_key = ARTIFACT_LABELS.get(label)
-    if artifact_path_key is None:
-        raise HTTPException(status_code=404, detail="Artifact label not found")
-    artifact_path = job.get(artifact_path_key)
-    if not artifact_path:
-        raise HTTPException(status_code=404, detail="Artifact not found")
+    artifact_path = _get_artifact_path(job, label)
     settings = get_settings()
     if settings.object_storage_enabled:
         if not token or not expires:
@@ -325,6 +360,45 @@ def job_artifact_link(request: Request, job_id: str, label: str) -> dict[str, An
         "label": label,
         "expires": expires,
     }
+
+
+@router.get("/jobs/{job_id}/preview/{label}/manifest")
+def job_preview_manifest(request: Request, job_id: str, label: str) -> dict[str, Any]:
+    _require_auth(request)
+    job = _get_existing_job(job_id)
+    artifact_path = _get_artifact_path(job, label)
+    file_type = str(job["file_a_type"])
+    if file_type == "pdf":
+        page_count = _pdf_page_count(storage.read_bytes(artifact_path))
+    elif file_type == "image":
+        page_count = 1
+    else:
+        raise HTTPException(status_code=415, detail="Preview manifest is available for PDF/image")
+    return {"label": label, "file_type": file_type, "page_count": page_count}
+
+
+@router.get("/jobs/{job_id}/preview/{label}/page/{page}")
+def job_preview_page(request: Request, job_id: str, label: str, page: int) -> Response:
+    _require_auth(request)
+    if page < 1:
+        raise HTTPException(status_code=400, detail="Page numbers are 1-based")
+    job = _get_existing_job(job_id)
+    artifact_path = _get_artifact_path(job, label)
+    content = storage.read_bytes(artifact_path)
+    file_type = str(job["file_a_type"])
+    if file_type == "pdf":
+        image_bytes = _render_pdf_page(content, page)
+    elif file_type == "image" and page == 1:
+        image_bytes = _normalize_image_preview(content)
+    else:
+        raise HTTPException(status_code=415, detail="Preview page is available for PDF/image")
+    add_audit_event(
+        event_type="preview_accessed",
+        job_id=job_id,
+        request_id=getattr(request.state, "request_id", None),
+        details={"label": label, "page": page},
+    )
+    return Response(content=image_bytes, media_type="image/png")
 
 
 @router.get("/metrics")
@@ -555,6 +629,120 @@ def _artifact_media_type(file_type: str) -> str:
         "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     }.get(file_type, "application/octet-stream")
+
+
+def _get_artifact_path(job: dict[str, Any], label: str) -> str:
+    artifact_path_key = ARTIFACT_LABELS.get(label)
+    if artifact_path_key is None:
+        raise HTTPException(status_code=404, detail="Artifact label not found")
+    artifact_path = job.get(artifact_path_key)
+    if not artifact_path:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    return str(artifact_path)
+
+
+def _pdf_page_count(content: bytes) -> int:
+    with fitz.open(stream=content, filetype="pdf") as document:
+        return int(document.page_count)
+
+
+def _render_pdf_page(content: bytes, page: int) -> bytes:
+    with fitz.open(stream=content, filetype="pdf") as document:
+        if page > document.page_count:
+            raise HTTPException(status_code=404, detail="Page not found")
+        pdf_page = document.load_page(page - 1)
+        pixmap = pdf_page.get_pixmap(matrix=fitz.Matrix(1.75, 1.75), alpha=False)
+        return bytes(pixmap.tobytes("png"))
+
+
+def _normalize_image_preview(content: bytes) -> bytes:
+    with Image.open(BytesIO(content)) as image:
+        output = BytesIO()
+        image.convert("RGB").save(output, format="PNG")
+        return output.getvalue()
+
+
+def _build_draftable_pdf_export(
+    *,
+    left_name: str,
+    right_name: str,
+    left_content: bytes,
+    right_content: bytes,
+) -> bytes:
+    output = fitz.open()
+    _add_draftable_cover(output, left_name=left_name, right_name=right_name)
+    with (
+        fitz.open(stream=left_content, filetype="pdf") as left_document,
+        fitz.open(stream=right_content, filetype="pdf") as right_document,
+    ):
+        max_pages = max(left_document.page_count, right_document.page_count)
+        for page_index in range(max_pages):
+            if page_index < left_document.page_count:
+                output.insert_pdf(left_document, from_page=page_index, to_page=page_index)
+            else:
+                _add_blank_page(output, right_document, page_index)
+
+            if page_index < right_document.page_count:
+                output.insert_pdf(right_document, from_page=page_index, to_page=page_index)
+            else:
+                _add_blank_page(output, left_document, page_index)
+
+    for index, page in enumerate(output, start=1):
+        if index == 1:
+            continue
+        page.insert_textbox(
+            fitz.Rect(0, page.rect.height - 28, page.rect.width, page.rect.height - 8),
+            f"-- {index - 1} of {len(output) - 1} --",
+            align=fitz.TEXT_ALIGN_CENTER,
+            fontsize=9,
+            color=(0.35, 0.35, 0.35),
+        )
+    return bytes(output.tobytes(deflate=True))
+
+
+def _add_draftable_cover(output: fitz.Document, *, left_name: str, right_name: str) -> None:
+    page = output.new_page(width=595, height=842)
+    body = (
+        "Draftable Comparison Export\n\n"
+        "This document is an exported comparison generated by COMPARION in a "
+        "Draftable-style layout.\n\n"
+        f"Left document:\t{left_name}\n"
+        f"Right document:\t{right_name}\n\n"
+        "What is this document?\n"
+        "This is a comparison of two documents. The two documents are interleaved "
+        "such that the left document is displayed on even pages and the right "
+        "document is displayed on odd pages after this cover page.\n\n"
+        "Is there a specific way I should view this file?\n"
+        "This document is intended to be viewed in Two Page Continuous mode. "
+        "Blank pages are inserted when one document has fewer pages so that both "
+        "documents remain aligned as much as possible.\n\n"
+        "How do I read the changes?\n"
+        "Use the COMPARION web viewer for the interactive change list, semantic "
+        "labels, and synchronized navigation."
+    )
+    page.insert_textbox(
+        fitz.Rect(54, 54, 540, 790),
+        body,
+        fontsize=11,
+        lineheight=1.25,
+        fontname="helv",
+    )
+
+
+def _add_blank_page(output: fitz.Document, reference: fitz.Document, page_index: int) -> None:
+    if reference.page_count:
+        source_page = reference.load_page(min(page_index, reference.page_count - 1))
+        rect = source_page.rect
+        page = output.new_page(width=rect.width, height=rect.height)
+    else:
+        page = output.new_page(width=595, height=842)
+    page.insert_textbox(
+        fitz.Rect(0, page.rect.height / 2 - 12, page.rect.width, page.rect.height / 2 + 12),
+        "Blank page inserted to preserve alignment",
+        align=fitz.TEXT_ALIGN_CENTER,
+        fontsize=10,
+        color=(0.55, 0.55, 0.55),
+    )
 
 
 def _request_hash(upload_a: Any, upload_b: Any) -> str:

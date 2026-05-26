@@ -1,6 +1,6 @@
 "use client";
 
-import type { ArtifactLink, ChangeItem, JobResult } from "@/lib/types";
+import type { ArtifactLink, ChangeItem, JobResult, PreviewManifest } from "@/lib/types";
 import { DocxRenderer } from "./DocxRenderer";
 import { FallbackRenderer } from "./FallbackRenderer";
 import { PdfImageRenderer } from "./PdfImageRenderer";
@@ -8,19 +8,25 @@ import { PptxRenderer } from "./PptxRenderer";
 import { XlsxRenderer } from "./XlsxRenderer";
 
 interface DiffRendererProps {
+  allChanges: ChangeItem[];
   artifactA: ArtifactLink;
   artifactB: ArtifactLink;
   activeChange: ChangeItem | null;
   document: "a" | "b";
+  jobId: string;
+  previewManifest: PreviewManifest | null;
   result: JobResult;
   title: string;
 }
 
 export function DiffRenderer({
+  allChanges,
   artifactA,
   artifactB,
   activeChange,
   document,
+  jobId,
+  previewManifest,
   result,
   title
 }: DiffRendererProps) {
@@ -29,8 +35,12 @@ export function DiffRenderer({
   if (result.file_type === "pdf" || result.file_type === "image") {
     return (
       <PdfImageRenderer
+        allChanges={allChanges}
         activeChange={activeChange}
         artifact={artifact}
+        document={document}
+        jobId={jobId}
+        previewManifest={previewManifest}
         result={result}
         title={title}
       />

@@ -2,7 +2,7 @@
 
 import { useQueries, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { fetchArtifactLink, fetchJob, fetchResult } from "@/lib/api-client";
+import { fetchArtifactLink, fetchJob, fetchPreviewManifest, fetchResult } from "@/lib/api-client";
 import { ViewerShell } from "./viewer/ViewerShell";
 
 export function JobViewerPage({ jobId }: { jobId: string }) {
@@ -25,6 +25,14 @@ export function JobViewerPage({ jobId }: { jobId: string }) {
       queryKey: ["artifact-link", jobId, label],
       queryFn: () => fetchArtifactLink(jobId, label),
       enabled: isComplete
+    }))
+  });
+  const previewManifestQueries = useQueries({
+    queries: (["a", "b"] as const).map((label) => ({
+      queryKey: ["preview-manifest", jobId, label],
+      queryFn: () => fetchPreviewManifest(jobId, label),
+      enabled: isComplete && ["pdf", "image"].includes(jobQuery.data?.file_a_type ?? ""),
+      retry: false
     }))
   });
 
@@ -75,6 +83,10 @@ export function JobViewerPage({ jobId }: { jobId: string }) {
         <ViewerShell
           artifacts={{ a: artifactQueries[0].data, b: artifactQueries[1].data }}
           job={jobQuery.data}
+          previewManifests={{
+            a: previewManifestQueries[0].data ?? null,
+            b: previewManifestQueries[1].data ?? null
+          }}
           result={resultQuery.data}
         />
       ) : null}
