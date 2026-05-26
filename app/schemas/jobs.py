@@ -6,7 +6,16 @@ from pydantic import BaseModel
 
 JobStatus = Literal["queued", "running", "completed", "failed", "cancelled"]
 ChangeType = Literal["added", "removed", "modified", "warning"]
-ChangeCategory = Literal["text", "visual", "file", "metadata"]
+ChangeCategory = Literal[
+    "text",
+    "visual",
+    "file",
+    "metadata",
+    "formatting",
+    "table",
+    "image",
+    "structure",
+]
 Severity = Literal["low", "medium", "high"]
 
 
@@ -46,6 +55,14 @@ class BoundingBox(BaseModel):
 class SourceRef(BaseModel):
     document: Literal["a", "b", "both"]
     page: int | None = None
+    part: str | None = None
+    block_id: str | None = None
+    paragraph: int | None = None
+    run: int | None = None
+    table: int | None = None
+    row: int | None = None
+    column: int | None = None
+    image: int | None = None
 
 
 class ChangeItem(BaseModel):

@@ -13,6 +13,7 @@ from app.services.comparison.alignment import (
     refine_with_ecc,
 )
 from app.services.comparison.debug_artifacts import debug_artifact, save_debug_image
+from app.services.comparison.docx_engine import compare_docx_documents
 from app.services.comparison.image_engine import load_normalized_image, visual_change
 from app.services.comparison.ocr import filter_tokens, get_ocr_engine
 from app.services.comparison.pdf_engine import extract_text, render_pages
@@ -55,6 +56,8 @@ def compare_files(
         return _compare_pdf(content_a, content_b, job_id, started_at)
     if type_a == "image":
         return _compare_image(content_a, content_b, job_id, started_at)
+    if type_a == "docx":
+        return _compare_docx(content_a, content_b, started_at)
 
     return _result(
         summary=f"Unsupported file type for Sprint 2 baseline: {type_a}",
@@ -178,6 +181,29 @@ def _compare_image(
             [],
             change_count=len(changes),
         ),
+    )
+
+
+def _compare_docx(
+    content_a: bytes,
+    content_b: bytes,
+    started_at: float,
+) -> dict[str, Any]:
+    changes, docx_diagnostics = compare_docx_documents(content_a, content_b)
+    diagnostics = _diagnostics(
+        started_at,
+        [],
+        [],
+        [],
+        [],
+        change_count=len(changes),
+    )
+    diagnostics["docx"] = docx_diagnostics
+    return _result(
+        summary=_summary(changes),
+        file_type="docx",
+        changes=changes,
+        diagnostics=diagnostics,
     )
 
 

@@ -8,6 +8,8 @@ dependencies = [
     "python-multipart",
     "PyMuPDF",
     "Pillow",
+    "python-docx",
+    "lxml",
     "numpy<2.0",
     "scikit-image",
     "opencv-python-headless<4.12",

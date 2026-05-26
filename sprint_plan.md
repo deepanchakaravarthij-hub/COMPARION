@@ -162,28 +162,28 @@ Core capabilities:
 
 ### Parser and Model
 
-- [ ] Implement DOCX parser for paragraphs, runs, tables, headers, footers, and embedded images.
-- [ ] Extract style metadata: font, size, emphasis, alignment, color, and numbering.
-- [ ] Map DOCX content into the Unified Document Model.
-- [ ] Preserve stable source references for report navigation.
+- [x] Implement DOCX parser for paragraphs, runs, tables, headers, footers, and embedded images.
+- [x] Extract style metadata: font, size, emphasis, alignment, color, and numbering.
+- [x] Map DOCX content into the Unified Document Model.
+- [x] Preserve stable source references for report navigation.
 
 ### Diffing
 
-- [ ] Add paragraph-level and run-level text diff.
-- [ ] Add formatting diff classifier.
-- [ ] Add table structural diff for rows, columns, and cell values.
-- [ ] Add reorder and move detection heuristics for sections and paragraphs.
+- [x] Add paragraph-level and run-level text diff.
+- [x] Add formatting diff classifier.
+- [x] Add table structural diff for rows, columns, and cell values.
+- [x] Add reorder and move detection heuristics for sections and paragraphs.
 
 ### Reporting
 
-- [ ] Add DOCX-specific change categories in JSON.
-- [ ] Render DOCX changes in the HTML report.
-- [ ] Add confidence and severity scoring for each DOCX change.
+- [x] Add DOCX-specific change categories in JSON.
+- [x] Render DOCX changes in the HTML report.
+- [x] Add confidence and severity scoring for each DOCX change.
 
 ### Exit Criteria
 
-- [ ] DOCX changes are grouped by text, formatting, table, image, and structure.
-- [ ] Report output is stable across repeated runs for the same fixture pair.
+- [x] DOCX changes are grouped by text, formatting, table, image, and structure.
+- [x] Report output is stable across repeated runs for the same fixture pair.
 
 ---
 
@@ -351,7 +351,7 @@ Every story or task should satisfy the following before being marked done:
 - [x] Sprint 0 complete.
 - [x] Sprint 1 complete.
 - [x] Sprint 2 complete.
-- [ ] Sprint 3 complete.
+- [x] Sprint 3 complete.
 - [ ] Sprint 4 complete.
 - [ ] Sprint 5 complete.
 - [ ] Sprint 6 complete.

@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from io import BytesIO
 
-import fitz
+import fitz  # type: ignore[import-untyped]
+from docx import Document
 from fastapi.testclient import TestClient
 from PIL import Image, ImageDraw
 
@@ -26,9 +27,31 @@ def _pdf_bytes(text: str) -> bytes:
     document = fitz.open()
     page = document.new_page()
     page.insert_text((72, 72), text)
-    content = document.tobytes()
+    content = bytes(document.tobytes())
     document.close()
     return content
+
+
+def _docx_bytes(
+    paragraph_runs: list[list[tuple[str, bool]]],
+    table_rows: list[list[str]] | None = None,
+) -> bytes:
+    document = Document()
+    for runs in paragraph_runs:
+        paragraph = document.add_paragraph()
+        for text, bold in runs:
+            run = paragraph.add_run(text)
+            run.bold = bold
+
+    if table_rows:
+        table = document.add_table(rows=len(table_rows), cols=len(table_rows[0]))
+        for row_index, row in enumerate(table_rows):
+            for column_index, value in enumerate(row):
+                table.cell(row_index, column_index).text = value
+
+    output = BytesIO()
+    document.save(output)
+    return output.getvalue()
 
 
 def test_health() -> None:
@@ -70,6 +93,59 @@ def test_compare_pdf_and_fetch_result_and_report() -> None:
     report_res = client.get(f"/v1/jobs/{job_id}/report.html")
     assert report_res.status_code == 200
     assert "COMPARION Report" in report_res.text
+
+
+def test_compare_docx_and_fetch_result_and_report() -> None:
+    file_a = _docx_bytes(
+        [
+            [("Agreement summary", False)],
+            [("Payment due in 30 days", False)],
+            [("Reviewed by Legal", False)],
+        ],
+        [["Clause", "Value"], ["Fee", "100"]],
+    )
+    file_b = _docx_bytes(
+        [
+            [("Agreement summary", False)],
+            [("Payment due in 45 days", False)],
+            [("Reviewed by Legal", True)],
+        ],
+        [["Clause", "Value"], ["Fee", "125"]],
+    )
+    files = {
+        "file_a": (
+            "a.docx",
+            file_a,
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ),
+        "file_b": (
+            "b.docx",
+            file_b,
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ),
+    }
+
+    compare_res = client.post("/v1/compare", files=files)
+    assert compare_res.status_code == 200
+
+    job_id = compare_res.json()["job_id"]
+    status_res = client.get(f"/v1/jobs/{job_id}")
+    assert status_res.status_code == 200
+    assert status_res.json()["status"] == "completed"
+    assert status_res.json()["file_a_type"] == "docx"
+
+    result_res = client.get(f"/v1/jobs/{job_id}/result")
+    assert result_res.status_code == 200
+    payload = result_res.json()
+    categories = {change["category"] for change in payload["changes"]}
+    assert {"text", "formatting", "table"}.issubset(categories)
+    assert payload["diagnostics"]["docx"]["paragraph_count"]["a"] >= 3
+
+    report_res = client.get(f"/v1/jobs/{job_id}/report.html")
+    assert report_res.status_code == 200
+    assert "Text changes" in report_res.text
+    assert "Formatting changes" in report_res.text
+    assert "Table changes" in report_res.text
 
 
 def test_compare_identical_images_has_no_changes() -> None:
@@ -139,3 +215,18 @@ def test_image_diff_is_deterministic() -> None:
         "width": 0.32,
         "height": 0.32,
     }
+
+
+def test_docx_diff_is_deterministic() -> None:
+    file_a = _docx_bytes(
+        [[("Alpha", False)], [("Beta", False)]],
+        [["Key", "Value"], ["Limit", "10"]],
+    )
+    file_b = _docx_bytes(
+        [[("Beta", False)], [("Alpha changed", False)]],
+        [["Key", "Value"], ["Limit", "20"]],
+    )
+    result_a = compare_files("a.docx", "b.docx", file_a, file_b)
+    result_b = compare_files("a.docx", "b.docx", file_a, file_b)
+    assert result_a["changes"] == result_b["changes"]
+    assert {change["category"] for change in result_a["changes"]} >= {"text", "table", "structure"}

@@ -7,9 +7,10 @@ from fastapi import HTTPException, UploadFile
 from app.core.config import get_settings
 from app.utils.filetype import detect_type
 
-SUPPORTED_TYPES = {"pdf", "image"}
+SUPPORTED_TYPES = {"pdf", "image", "docx"}
 SUPPORTED_MIME_TYPES = {
     "application/pdf": "pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
     "image/png": "image",
     "image/jpeg": "image",
     "image/tiff": "image",

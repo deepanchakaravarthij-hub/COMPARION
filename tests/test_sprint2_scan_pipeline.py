@@ -51,7 +51,12 @@ def test_preprocess_corrects_rotated_scan_to_portrait() -> None:
 def test_skew_estimation_detects_skewed_scan() -> None:
     image = _scan_image()
     matrix = cv2.getRotationMatrix2D((40, 60), 8, 1.0)
-    skewed = cv2.warpAffine(np.array(image), matrix, (80, 120), borderValue=255)
+    skewed = cv2.warpAffine(  # type: ignore[call-overload]
+        np.array(image),
+        matrix,
+        (80, 120),
+        borderValue=255,
+    )
     angle = estimate_skew(skewed)
     assert abs(angle) > 1
 
