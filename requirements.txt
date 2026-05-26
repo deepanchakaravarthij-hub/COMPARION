@@ -3,3 +3,7 @@ uvicorn[standard]
 python-multipart
 pytest
 httpx
+black
+mypy
+ruff
+pre-commit

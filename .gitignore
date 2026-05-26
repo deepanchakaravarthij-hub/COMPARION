@@ -25,3 +25,13 @@ venv/
 env/
 ENV/
 .venv/
+
+# Local config and runtime data
+.env
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+storage/
+reports/

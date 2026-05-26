@@ -1,7 +1,14 @@
+from typing import Any
+
 from app.utils.filetype import detect_type
 
 
-def compare_files(file_a_name: str, file_b_name: str, content_a: bytes, content_b: bytes) -> dict:
+def compare_files(
+    file_a_name: str,
+    file_b_name: str,
+    content_a: bytes,
+    content_b: bytes,
+) -> dict[str, Any]:
     type_a = detect_type(file_a_name)
     type_b = detect_type(file_b_name)
 
@@ -23,6 +30,9 @@ def compare_files(file_a_name: str, file_b_name: str, content_a: bytes, content_
         "summary": "Differences detected (POC baseline comparator)",
         "file_type": type_a,
         "changes": [
-            {"type": "modified", "message": "Binary content differs; advanced per-format diff pending"}
+            {
+                "type": "modified",
+                "message": "Binary content differs; advanced per-format diff pending",
+            }
         ],
     }

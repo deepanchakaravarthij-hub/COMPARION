@@ -1,250 +1,362 @@
-# COMPARION Detailed Sprint Plan (Task Checklist)
+# COMPARION Detailed Sprint Plan
 
-This plan breaks the project into execution-ready sprints with clear checklists, ownership targets, and exit criteria.
+This plan breaks the COMPARION document comparison POC into execution-ready sprints with clear scope, checklist items, deliverables, and acceptance gates.
+
+## Current Repository Baseline
+
+- FastAPI application scaffold exists.
+- Current endpoints: `GET /health`, `POST /v1/compare`, `GET /v1/jobs/{job_id}`, `GET /v1/jobs/{job_id}/result`.
+- Current job storage is in-memory.
+- Current comparator is a baseline binary comparator.
+- Documentation set exists under `docs/`.
+
+## POC Objective
+
+Ship a production-like POC that compares two versions of supported documents and produces deterministic structured JSON plus an operator-friendly HTML report.
+
+Supported target formats:
+- PDF
+- Images and scanned documents
+- DOCX
+- XLSX
+- PPTX
+
+Core capabilities:
+- Textual differences
+- Structural differences
+- Visual differences with coordinates and overlays
+- OCR normalization for scans, rotation, skew, and noisy captures
+- Unified Document Model (UDM)
+- Confidence and severity scoring
+- Optional semantic and risk summaries
 
 ## Assumptions
-- Sprint length: 2 weeks
-- Team: 3-5 engineers (Backend, CV/OCR, Frontend, QA/DevOps)
-- Primary objective: ship a production-like POC for multi-format document comparison
+
+- Sprint length: 2 weeks unless noted.
+- Team: 3-5 engineers across backend, CV/OCR, frontend, QA, and DevOps.
+- POC target: pilot-quality system, not full enterprise platform.
+- Primary benchmark target: curated dataset with representative clean, scanned, rotated, skewed, and noisy documents.
+
+## Program Acceptance Criteria
+
+- Compare two same-type documents and return stable JSON plus HTML report.
+- Highlight added, removed, and modified content with page, slide, sheet, cell, or normalized coordinate references.
+- Handle rotated and skewed scanned inputs with stable overlays.
+- Keep false-positive rate at or below 10% on the curated benchmark set.
+- Persist job lifecycle and failure reasons.
+- Provide repeatable tests and benchmark output for each major engine path.
 
 ---
 
-## Sprint 0 — Project Setup & Delivery Foundation
-**Goal:** Establish development baseline and delivery workflow.
+## Sprint 0 - Foundation and Delivery Workflow
+
+**Goal:** Make the existing scaffold reliable for team development and CI.
 
 ### Checklist
-- [ ] Finalize scope for POC (must-have vs later features)
-- [ ] Define non-functional targets (latency, throughput, FP-rate)
-- [ ] Create architecture decision records (ADRs) for key choices
-- [ ] Setup repository standards (branching, commit conventions, PR template)
-- [ ] Add Python tooling (ruff/black/mypy + pre-commit)
-- [ ] Setup baseline CI (lint + unit tests)
-- [ ] Create local runtime stack (FastAPI + Redis + Postgres + MinIO via Docker Compose)
-- [ ] Add centralized config management (`.env`, settings module)
-- [ ] Implement structured logging and request/job correlation IDs
-- [ ] Create initial benchmark dataset folders and naming rules
+
+- [x] Confirm POC scope and classify features as must-have, should-have, and later.
+- [x] Define non-functional targets: latency, max file size, throughput, false-positive rate, and retention.
+- [x] Create Architecture Decision Records for core choices.
+- [x] Add repository standards: branch rules, commit conventions, PR template, and issue template.
+- [x] Add Python tooling: `ruff`, `black`, `mypy`, and `pre-commit`.
+- [x] Add baseline CI for linting and tests.
+- [x] Add Docker Compose for FastAPI, Redis, Postgres, and MinIO.
+- [x] Add centralized config management with `.env` and a settings module.
+- [x] Add structured logging with request IDs and job correlation IDs.
+- [x] Create benchmark fixture folder structure and naming rules.
+- [x] Document local setup in `README.md`.
 
 ### Deliverables
-- Working dev environment for all team members
-- CI pipeline running on each PR
-- Initial benchmark fixture structure
+
+- Repeatable local development setup.
+- CI pipeline running on each pull request.
+- Benchmark fixture structure checked into the repository.
 
 ### Exit Criteria
-- [ ] Any new contributor can run project locally in <= 30 min
-- [ ] CI pass is required for merge
+
+- [x] New contributor can run the project locally in 30 minutes or less.
+- [x] CI must pass before merge.
+- [x] Health endpoint and current API tests pass locally and in CI.
 
 ---
 
-## Sprint 1 — Core Job Workflow + PDF/Image Baseline
-**Goal:** End-to-end compare job for PDF/images with persisted job metadata.
+## Sprint 1 - Persistent Job Workflow and PDF/Image Baseline
 
-### Backend/API
-- [ ] Replace in-memory job store with DB-backed job table
-- [ ] Add job state transitions (`queued`, `running`, `completed`, `failed`)
-- [ ] Add upload validation (size, MIME, extension, duplicate upload detection)
-- [ ] Save uploaded files to storage abstraction (local/MinIO)
-- [ ] Add result schema versioning (`result_schema_version`)
-- [ ] Add basic retry + error handling contract
+**Goal:** Upgrade the current scaffold into an end-to-end PDF/image comparison workflow with persisted job metadata.
 
-### Comparison Engine (Baseline)
-- [ ] Implement file-type routing pipeline
-- [ ] Add PDF page rendering module (PyMuPDF)
-- [ ] Add image normalization (resize + grayscale path)
-- [ ] Add baseline text extraction (native PDF text if available)
-- [ ] Add baseline text diff (`difflib`/token diff)
-- [ ] Add baseline visual diff (SSIM + contour boxes)
-- [ ] Produce normalized JSON result + HTML report stub
+### Backend and API
+
+- [ ] Replace in-memory job store with DB-backed job table.
+- [ ] Add job states: `queued`, `running`, `completed`, `failed`, `cancelled`.
+- [ ] Add upload validation for size, MIME type, extension, and duplicate uploads.
+- [ ] Save uploaded files through a storage abstraction that supports local disk and MinIO.
+- [ ] Add result schema versioning with `result_schema_version`.
+- [ ] Add consistent API error contract.
+- [ ] Add basic retry behavior for transient processing failures.
+- [ ] Add report download endpoint.
+
+### Comparison Engine
+
+- [ ] Implement file-type routing pipeline.
+- [ ] Add PDF page rendering with PyMuPDF.
+- [ ] Add image normalization path: resize, grayscale, thresholding, and optional denoise.
+- [ ] Add native PDF text extraction where available.
+- [ ] Add baseline text diff using token-level comparison.
+- [ ] Add baseline visual diff using SSIM and contour bounding boxes.
+- [ ] Emit normalized JSON with page-level coordinates.
+- [ ] Generate HTML report stub with summary and page-level changes.
 
 ### QA
-- [ ] Add unit tests for job lifecycle
-- [ ] Add API integration tests for all endpoints + error paths
-- [ ] Add golden tests for simple PDF/image compare fixtures
+
+- [ ] Add unit tests for job state transitions.
+- [ ] Add API integration tests for uploads, status polling, result retrieval, and error paths.
+- [ ] Add golden tests for simple PDF and image fixtures.
 
 ### Exit Criteria
-- [ ] Upload 2 PDFs or images, get deterministic result JSON + HTML report
-- [ ] Job failures are captured with reason and surfaced via API
+
+- [ ] User can upload two PDFs or images and receive deterministic JSON plus an HTML report.
+- [ ] Failed jobs include a clear machine-readable and human-readable reason.
+- [ ] Simple PDF/image benchmark cases run in CI.
 
 ---
 
-## Sprint 2 — Scanned Document Robustness (Rotation/Deskew/OCR)
-**Goal:** Reduce false positives for scanned docs and camera captures.
+## Sprint 2 - Scanned Document Robustness
 
-### OCR & Preprocessing
-- [ ] Integrate PaddleOCR service wrapper
-- [ ] Add orientation detection and rotation correction
-- [ ] Add deskew pipeline (Hough/line-based)
-- [ ] Add denoise + thresholding + contrast enhancement toggles
-- [ ] Add OCR confidence filtering and token cleanup
-- [ ] Add OCR block grouping (line -> paragraph)
+**Goal:** Reduce false positives for scanned documents and camera captures.
+
+### OCR and Preprocessing
+
+- [ ] Integrate PaddleOCR service wrapper.
+- [ ] Add orientation detection and rotation correction.
+- [ ] Add deskew pipeline using Hough or line-based methods.
+- [ ] Add denoise, thresholding, and contrast enhancement options.
+- [ ] Add OCR confidence filtering.
+- [ ] Add OCR token cleanup and normalization.
+- [ ] Group OCR tokens into lines, paragraphs, and blocks.
 
 ### Alignment
-- [ ] Implement coarse page alignment (scale/orientation normalization)
-- [ ] Implement feature-based alignment (ORB + homography)
-- [ ] Add fine alignment refinement (ECC optional)
-- [ ] Persist alignment matrices for debug/replay
 
-### QA/Benchmarking
-- [ ] Build scanned-doc benchmark set (rotated, skewed, noisy)
-- [ ] Track precision/recall + false positive rate
-- [ ] Add regression tests for rotated/scanned cases
+- [ ] Implement coarse page alignment for scale and orientation.
+- [ ] Implement feature-based alignment with ORB and homography.
+- [ ] Add optional fine alignment refinement with ECC.
+- [ ] Persist alignment matrices for debug and replay.
+- [ ] Emit visual debug artifacts for failed or low-confidence alignments.
+
+### QA and Benchmarking
+
+- [ ] Build scanned-document benchmark set with rotated, skewed, noisy, and low-resolution examples.
+- [ ] Track precision, recall, and false-positive rate.
+- [ ] Add regression tests for rotated and skewed scanned cases.
 
 ### Exit Criteria
-- [ ] Rotation/skewed scan cases process successfully
-- [ ] False positive rate reduced against Sprint 1 baseline
+
+- [ ] Rotated and skewed scan cases complete successfully.
+- [ ] False-positive rate improves against the Sprint 1 baseline.
+- [ ] Alignment failures are visible in logs and report diagnostics.
 
 ---
 
-## Sprint 3 — DOCX Structural Comparison
-**Goal:** Detect Word-level textual + structural changes.
+## Sprint 3 - DOCX Structural Comparison
 
-### Parser & Model
-- [ ] Implement DOCX parser (paragraphs, runs, tables, headers/footers)
-- [ ] Extract style metadata (font, size, emphasis, alignment)
-- [ ] Extract embedded images metadata
-- [ ] Map DOCX content into Unified Document Model (UDM)
+**Goal:** Detect Word-level textual and structural changes.
+
+### Parser and Model
+
+- [ ] Implement DOCX parser for paragraphs, runs, tables, headers, footers, and embedded images.
+- [ ] Extract style metadata: font, size, emphasis, alignment, color, and numbering.
+- [ ] Map DOCX content into the Unified Document Model.
+- [ ] Preserve stable source references for report navigation.
 
 ### Diffing
-- [ ] Add paragraph/run-level textual diff
-- [ ] Add formatting diff classifier
-- [ ] Add table structural diff (row/col add/remove, cell value changes)
-- [ ] Add reorder/move detection heuristics for sections/paragraphs
+
+- [ ] Add paragraph-level and run-level text diff.
+- [ ] Add formatting diff classifier.
+- [ ] Add table structural diff for rows, columns, and cell values.
+- [ ] Add reorder and move detection heuristics for sections and paragraphs.
 
 ### Reporting
-- [ ] Add DOCX-specific change categories in JSON and HTML report
-- [ ] Add confidence/severity scoring for each change
+
+- [ ] Add DOCX-specific change categories in JSON.
+- [ ] Render DOCX changes in the HTML report.
+- [ ] Add confidence and severity scoring for each DOCX change.
 
 ### Exit Criteria
-- [ ] DOCX changes are grouped by category and rendered in report
+
+- [ ] DOCX changes are grouped by text, formatting, table, image, and structure.
+- [ ] Report output is stable across repeated runs for the same fixture pair.
 
 ---
 
-## Sprint 4 — XLSX Comparison Engine
-**Goal:** Spreadsheet-aware comparison with cell/formula intelligence.
+## Sprint 4 - XLSX Comparison Engine
 
-### Parser & Diff
-- [ ] Implement workbook/sheet parser (openpyxl)
-- [ ] Detect sheet add/remove/rename
-- [ ] Add cell-level value diff
-- [ ] Add formula diff with normalized formula parsing
-- [ ] Add row/column insertion/deletion detection
-- [ ] Add style/format diff (optional thresholded)
-- [ ] Handle hidden rows/columns/sheets metadata changes
+**Goal:** Add spreadsheet-aware comparison with cell and formula intelligence.
+
+### Parser and Diff
+
+- [ ] Implement workbook and sheet parser with `openpyxl`.
+- [ ] Detect sheet add, remove, rename, and reorder events.
+- [ ] Add cell-level value diff.
+- [ ] Add formula diff with normalized formula parsing.
+- [ ] Add row and column insertion/deletion detection.
+- [ ] Add style and format diff with configurable thresholding.
+- [ ] Detect hidden rows, columns, and sheet metadata changes.
 
 ### Reporting
-- [ ] Add sheet-level summary and drill-down views
-- [ ] Export machine-readable changed-cell list
+
+- [ ] Add sheet-level summary.
+- [ ] Add drill-down view for changed cells.
+- [ ] Export machine-readable changed-cell list.
 
 ### Exit Criteria
-- [ ] XLSX comparison supports multi-sheet workbooks with formula awareness
+
+- [ ] XLSX comparison supports multi-sheet workbooks.
+- [ ] Formula and value changes are clearly separated in output.
 
 ---
 
-## Sprint 5 — PPT/PPTX Comparison
-**Goal:** Slide-aware object-level comparison.
+## Sprint 5 - PPTX Comparison Engine
+
+**Goal:** Add slide-aware object-level comparison.
 
 ### Parsing
-- [ ] Implement PPTX object extraction (textbox, shape, table, image)
-- [ ] Add slide rendering pipeline for visual diff overlays
-- [ ] Add slide mapping and reorder detection
+
+- [ ] Implement PPTX object extraction for text boxes, shapes, tables, and images.
+- [ ] Add slide rendering pipeline for visual diff overlays.
+- [ ] Add slide mapping and reorder detection.
+- [ ] Capture object-level coordinates for report overlays.
 
 ### Diffing
-- [ ] Add textbox text diff + style diff
-- [ ] Add shape and table object diff
-- [ ] Add embedded image diff hooks (hash/SSIM)
+
+- [ ] Add text box text diff.
+- [ ] Add text style diff.
+- [ ] Add shape and table object diff.
+- [ ] Add embedded image diff using hash and SSIM hooks.
+
+### Reporting
+
+- [ ] Add slide-level summary.
+- [ ] Add object-level change list.
+- [ ] Render slide visual overlays in HTML report.
 
 ### Exit Criteria
-- [ ] PPTX reports slide-level and object-level modifications
+
+- [ ] PPTX reports slide-level and object-level modifications.
+- [ ] Slide reorder and object changes are distinguishable.
 
 ---
 
-## Sprint 6 — Unified Model, API Hardening & Frontend Viewer
-**Goal:** Stabilize one cross-format contract + operator-friendly UI.
+## Sprint 6 - Unified Model, API Hardening, and Frontend Viewer
 
-### Unified Model/API
-- [ ] Finalize UDM schema and validation contracts
-- [ ] Add backward-compatible API response versioning
-- [ ] Add pagination/filtering for large result sets
-- [ ] Add signed report download URLs (if using object storage)
+**Goal:** Stabilize one cross-format contract and deliver an operator-friendly UI.
+
+### Unified Model and API
+
+- [ ] Finalize UDM schema and validation contracts.
+- [ ] Add backward-compatible API response versioning.
+- [ ] Add pagination and filtering for large result sets.
+- [ ] Add signed report download URLs when object storage is enabled.
+- [ ] Add API documentation examples for every supported format.
 
 ### Frontend
-- [ ] Build upload + compare job submission UI
-- [ ] Build job status polling and history list
-- [ ] Build side-by-side viewer with overlay boxes
-- [ ] Add change list sidebar with filters (type/severity/page)
-- [ ] Add synchronized navigation (page/slide/sheet)
+
+- [ ] Build upload and compare job submission UI.
+- [ ] Build job status polling and history list.
+- [ ] Build side-by-side viewer with overlay boxes.
+- [ ] Add change list sidebar with filters for type, severity, page, slide, and sheet.
+- [ ] Add synchronized navigation across compared documents.
+- [ ] Add report download action.
 
 ### Exit Criteria
-- [ ] Stakeholder demo flow fully functional end-to-end
+
+- [ ] Stakeholder demo flow is functional end to end.
+- [ ] Same UI can inspect PDF/image, DOCX, XLSX, and PPTX result categories.
 
 ---
 
-## Sprint 7 — Semantic Layer + Risk Summaries
+## Sprint 7 - Semantic Layer and Risk Summaries
+
 **Goal:** Reduce noise and provide business-meaningful change insights.
 
 ### Semantic Intelligence
-- [ ] Integrate embedding model service (BGE/Jina/GTE)
-- [ ] Add semantic similarity scoring for changed blocks
-- [ ] Label changes: wording-only vs meaning-changed
-- [ ] Add move/reorder semantic matching across sections/pages
+
+- [ ] Integrate embedding model service such as BGE, Jina, or GTE.
+- [ ] Add semantic similarity scoring for changed blocks.
+- [ ] Label changes as wording-only, meaning-changed, moved, or reordered.
+- [ ] Add semantic matching across sections and pages.
 
 ### AI Summaries
-- [ ] Create prompt templates for change summary and risk explanation
-- [ ] Add high-risk rule templates (finance/legal/compliance)
-- [ ] Add optional local LLM summarization pipeline
+
+- [ ] Create prompt templates for change summary and risk explanation.
+- [ ] Add high-risk rule templates for finance, legal, and compliance documents.
+- [ ] Add optional local LLM summarization pipeline.
+- [ ] Store summary provenance and confidence metadata.
 
 ### Exit Criteria
-- [ ] Reports include semantic + risk summary section with confidence
+
+- [ ] Reports include semantic summary, risk summary, and confidence.
+- [ ] Semantic labels reduce repeated or noisy low-value changes in benchmark reports.
 
 ---
 
-## Sprint 8 — Production Readiness & Performance
-**Goal:** Make system reliable, observable, and scalable for pilot usage.
+## Sprint 8 - Production Readiness and Pilot Hardening
 
-### Reliability & Ops
-- [ ] Move background work to Celery workers
-- [ ] Add retry policy + dead-letter queue
-- [ ] Add idempotency keys for compare jobs
-- [ ] Add audit logs for job lifecycle and report access
-- [ ] Add monitoring dashboards (latency, failures, queue depth)
-- [ ] Add alerting for worker failures and SLA breaches
+**Goal:** Make the system reliable, observable, and scalable enough for pilot usage.
+
+### Reliability and Operations
+
+- [ ] Move background work to Celery workers.
+- [ ] Add retry policy and dead-letter queue.
+- [ ] Add idempotency keys for compare jobs.
+- [ ] Add audit logs for job lifecycle and report access.
+- [ ] Add monitoring dashboards for latency, failures, queue depth, and worker health.
+- [ ] Add alerting for worker failures and SLA breaches.
 
 ### Security
-- [ ] Add authN/authZ (JWT/API keys)
-- [ ] Add file sanitization and malware scan hook
-- [ ] Add PII-safe logging policy
+
+- [ ] Add authentication and authorization using JWT or API keys.
+- [ ] Add file sanitization and malware scan hook.
+- [ ] Add PII-safe logging policy.
+- [ ] Add retention and deletion policy for uploaded documents and reports.
 
 ### Performance
-- [ ] Build load test scenarios (small/medium/large docs)
-- [ ] Profile bottlenecks (OCR, alignment, rendering)
-- [ ] Add caching and batching where valuable
+
+- [ ] Build load test scenarios for small, medium, and large documents.
+- [ ] Profile OCR, alignment, rendering, and report generation bottlenecks.
+- [ ] Add caching and batching where benchmark data shows value.
+- [ ] Document pilot deployment sizing assumptions.
 
 ### Exit Criteria
-- [ ] Pilot-ready deployment with SLA and observability baseline
+
+- [ ] Pilot-ready deployment has SLA, observability, security, and recovery baseline.
+- [ ] Load test results and known limits are documented.
 
 ---
 
-## Cross-Sprint Definition of Done (DoD)
-For every user story/task:
-- [ ] Code implemented and reviewed
-- [ ] Unit tests added/updated
-- [ ] Integration tests added/updated
-- [ ] Documentation updated (API and architecture where impacted)
-- [ ] Logging and error handling included
-- [ ] Benchmark impact recorded (if diff engine path changed)
-- [ ] Security/privacy checklist passed
+## Cross-Sprint Definition of Done
+
+Every story or task should satisfy the following before being marked done:
+
+- [ ] Code implemented and reviewed.
+- [ ] Unit tests added or updated.
+- [ ] Integration tests added or updated where API or workflow behavior changes.
+- [ ] Documentation updated when API, architecture, data model, or operations behavior changes.
+- [ ] Structured logging and error handling included.
+- [ ] Benchmark impact recorded when a diff engine or normalization path changes.
+- [ ] Security and privacy checklist passed.
 
 ---
 
-## Master Tracking Checklist (Program Level)
-- [ ] Sprint 0 complete
-- [ ] Sprint 1 complete
-- [ ] Sprint 2 complete
-- [ ] Sprint 3 complete
-- [ ] Sprint 4 complete
-- [ ] Sprint 5 complete
-- [ ] Sprint 6 complete
-- [ ] Sprint 7 complete
-- [ ] Sprint 8 complete
-- [ ] POC acceptance criteria met
-- [ ] Stakeholder demo sign-off
-- [ ] Pilot rollout readiness review passed
+## Master Tracking Checklist
+
+- [x] Sprint 0 complete.
+- [ ] Sprint 1 complete.
+- [ ] Sprint 2 complete.
+- [ ] Sprint 3 complete.
+- [ ] Sprint 4 complete.
+- [ ] Sprint 5 complete.
+- [ ] Sprint 6 complete.
+- [ ] Sprint 7 complete.
+- [ ] Sprint 8 complete.
+- [ ] Program acceptance criteria met.
+- [ ] Stakeholder demo signed off.
+- [ ] Pilot rollout readiness review passed.

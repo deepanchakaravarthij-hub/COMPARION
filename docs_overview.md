@@ -3,17 +3,24 @@
 This repository includes a POC documentation set for building a multi-format document comparison engine.
 
 ## Documents
-- `plan.md` — master implementation plan and phase roadmap.
-- `docs/01-architecture.md` — detailed system architecture and component boundaries.
-- `docs/02-unified-document-model.md` — canonical data model for all formats.
-- `docs/03-diff-engines.md` — text/structure/visual/semantic engine design.
-- `docs/04-edge-cases.md` — enterprise edge-case handling playbook.
-- `docs/05-api-spec.md` — suggested FastAPI endpoints and schemas.
-- `docs/06-testing-and-benchmarks.md` — quality strategy and acceptance gates.
-- `docs/07-deployment-and-ops.md` — docker, workers, scaling, observability.
-- `docs/08-implementation-backlog.md` — sprint-ready task breakdown.
 
-## Recommended build order
+- `plan.md` - master implementation plan and phase roadmap.
+- `sprint_plan.md` - detailed execution checklist by sprint.
+- `docs/01-architecture.md` - detailed system architecture and component boundaries.
+- `docs/02-unified-document-model.md` - canonical data model for all formats.
+- `docs/03-diff-engines.md` - text, structure, visual, and semantic engine design.
+- `docs/04-edge-cases.md` - enterprise edge-case handling playbook.
+- `docs/05-api-spec.md` - suggested FastAPI endpoints and schemas.
+- `docs/06-testing-and-benchmarks.md` - quality strategy and acceptance gates.
+- `docs/07-deployment-and-ops.md` - Docker, workers, scaling, and observability.
+- `docs/08-implementation-backlog.md` - sprint-ready task breakdown.
+- `docs/09-poc-scope.md` - POC must-have, should-have, later, and out-of-scope items.
+- `docs/10-non-functional-targets.md` - initial performance, quality, reliability, security, and operability targets.
+- `docs/adr/` - architecture decision records.
+- `benchmarks/README.md` - benchmark fixture layout and naming rules.
+
+## Recommended Build Order
+
 1. `01-architecture`
 2. `02-unified-document-model`
 3. `03-diff-engines`
@@ -22,3 +29,5 @@ This repository includes a POC documentation set for building a multi-format doc
 6. `06-testing-and-benchmarks`
 7. `07-deployment-and-ops`
 8. `08-implementation-backlog`
+9. `09-poc-scope`
+10. `10-non-functional-targets`
