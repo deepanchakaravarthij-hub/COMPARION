@@ -3,7 +3,6 @@
 This repository includes a POC documentation set for building a multi-format document comparison engine.
 
 ## Documents
-- `sprint_plan.md` — detailed sprint-by-sprint execution checklist.
 - `plan.md` — master implementation plan and phase roadmap.
 - `docs/01-architecture.md` — detailed system architecture and component boundaries.
 - `docs/02-unified-document-model.md` — canonical data model for all formats.
