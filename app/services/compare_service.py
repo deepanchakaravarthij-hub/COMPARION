@@ -15,17 +15,17 @@ from app.services.comparison.alignment import (
 )
 from app.services.comparison.debug_artifacts import debug_artifact, save_debug_image
 from app.services.comparison.docx_engine import compare_docx_documents
+from app.services.comparison.embedded_image import bboxes_from_changes, diff_embedded_images
 from app.services.comparison.image_engine import load_normalized_image, visual_changes
-from app.services.comparison.ocr import extract_ocr_words, filter_tokens, get_ocr_engine
+from app.services.comparison.ocr import extract_ocr_words
 from app.services.comparison.pdf_engine import (
+    extract_page_images,
     extract_page_words,
-    extract_text,
     render_pages,
     word_diff_page,
 )
 from app.services.comparison.pptx_engine import compare_pptx_presentations
 from app.services.comparison.preprocessing import PreprocessedImage, preprocess_image
-from app.services.comparison.text_diff import token_changes
 from app.services.comparison.xlsx_engine import compare_xlsx_workbooks
 from app.services.semantic import SemanticOptions, apply_semantic_layer
 from app.utils.filetype import detect_type
@@ -95,6 +95,7 @@ def _compare_pdf(
     job_id: str | None,
     started_at: float,
 ) -> dict[str, Any]:
+    settings = get_settings()
     changes: list[dict[str, Any]] = []
     preprocessing: list[dict[str, Any]] = []
     alignments: list[dict[str, Any]] = []
@@ -105,6 +106,14 @@ def _compare_pdf(
     pages_b = render_pages(content_b)
     word_pages_a = extract_page_words(content_a)
     word_pages_b = extract_page_words(content_b)
+    image_pages_a = extract_page_images(
+        content_a,
+        max_per_page=settings.embedded_image_max_per_page,
+    )
+    image_pages_b = extract_page_images(
+        content_b,
+        max_per_page=settings.embedded_image_max_per_page,
+    )
 
     max_pages = max(len(pages_a), len(pages_b))
     for index in range(max_pages):
@@ -123,26 +132,6 @@ def _compare_pdf(
             )
             continue
 
-        # Per-page word-level text diff with normalized bounding boxes
-        wa = word_pages_a[index] if index < len(word_pages_a) else []
-        wb = word_pages_b[index] if index < len(word_pages_b) else []
-        page_text_changes: list[dict[str, Any]] = []
-        if wa or wb:
-            page_text_changes = word_diff_page(wa, wb, page)
-            changes.extend(page_text_changes)
-        else:
-            # Scanned/image-only page — fall back to OCR token diff (no spatial positions)
-            text_a = extract_text(content_a)
-            text_b = extract_text(content_b)
-            if not text_a.strip() and pages_a:
-                text_a, confidence_a = _ocr_text(pages_a[index])
-                ocr_confidences.append(confidence_a)
-            if not text_b.strip() and pages_b:
-                text_b, confidence_b = _ocr_text(pages_b[index])
-                ocr_confidences.append(confidence_b)
-            page_text_changes = token_changes(text_a, text_b)
-            changes.extend(page_text_changes)
-
         processed_a, processed_b, page_preprocessing = _prepare_pair(pages_a[index], pages_b[index])
         preprocessing.extend(_page_metadata(page, page_preprocessing))
         aligned_b, alignment = _align_pair(processed_a.image, processed_b.image)
@@ -155,8 +144,41 @@ def _compare_pdf(
         if artifact:
             artifacts.append(artifact)
 
-        if not page_text_changes:
-            changes.extend(visual_changes(processed_a.image, aligned_b, page=page))
+        wa = word_pages_a[index] if index < len(word_pages_a) else []
+        wb = word_pages_b[index] if index < len(word_pages_b) else []
+        page_text_changes = _pdf_page_text_changes(
+            wa,
+            wb,
+            page,
+            pages_a[index],
+            aligned_b,
+            settings,
+            ocr_confidences,
+        )
+        changes.extend(page_text_changes)
+
+        images_a = image_pages_a[index] if index < len(image_pages_a) else []
+        images_b = image_pages_b[index] if index < len(image_pages_b) else []
+        changes.extend(
+            diff_embedded_images(
+                images_a,
+                images_b,
+                page=page,
+                ssim_threshold=settings.image_ssim_threshold,
+            )
+        )
+
+        mask_bboxes = bboxes_from_changes(page_text_changes)
+        run_visual = settings.pdf_supplement_visual or not page_text_changes
+        if run_visual:
+            changes.extend(
+                visual_changes(
+                    processed_a.image,
+                    aligned_b,
+                    page=page,
+                    mask_bboxes=mask_bboxes if settings.pdf_supplement_visual else None,
+                )
+            )
 
     return _result(
         summary=_summary(changes),
@@ -210,7 +232,17 @@ def _compare_image(
     artifacts = [artifact] if artifact else []
 
     text_changes = word_diff_page(words_a, words_b, page=1) if words_a or words_b else []
-    changes = text_changes or visual_changes(processed_a.image, aligned_b)
+    changes: list[dict[str, Any]] = list(text_changes)
+    mask_bboxes = bboxes_from_changes(text_changes)
+    if settings.pdf_supplement_visual or not text_changes:
+        changes.extend(
+            visual_changes(
+                processed_a.image,
+                aligned_b,
+                page=1,
+                mask_bboxes=mask_bboxes if settings.pdf_supplement_visual else None,
+            )
+        )
 
     return _result(
         summary=_summary(changes),
@@ -328,19 +360,54 @@ def _align_pair(reference: Image.Image, candidate: Image.Image) -> tuple[Image.I
     return alignment.image, alignment
 
 
-def _ocr_text(image: Image.Image) -> tuple[str, float]:
-    settings = get_settings()
-    if not settings.ocr_enabled:
-        return "", 0.0
-    engine = get_ocr_engine(settings.ocr_adapter, settings.ocr_language)
-    result = engine.extract(image)
-    tokens = [token for block in result.blocks for line in block.lines for token in line.tokens]
-    filtered = filter_tokens(tokens, settings.ocr_confidence_threshold)
-    if not filtered:
-        return result.text, result.confidence
-    text = " ".join(token.text for token in filtered)
-    confidence = sum(token.confidence for token in filtered) / len(filtered)
-    return text, round(confidence, 3)
+def _needs_ocr(native_words: list[dict[str, Any]], settings: Any) -> bool:
+    if settings.scan_force_ocr:
+        return True
+    return len(native_words) < settings.scan_word_threshold
+
+
+def _pdf_page_text_changes(
+    words_a: list[dict[str, Any]],
+    words_b: list[dict[str, Any]],
+    page: int,
+    page_image_a: Image.Image,
+    aligned_b: Image.Image,
+    settings: Any,
+    ocr_confidences: list[float],
+) -> list[dict[str, Any]]:
+    use_ocr_a = _needs_ocr(words_a, settings)
+    use_ocr_b = _needs_ocr(words_b, settings)
+
+    if (use_ocr_a or use_ocr_b) and settings.ocr_enabled:
+        final_a = words_a
+        final_b = words_b
+        if use_ocr_a:
+            final_a, confidence_a = extract_ocr_words(
+                page_image_a.convert("RGB"),
+                confidence_threshold=settings.ocr_confidence_threshold,
+                adapter=settings.ocr_adapter,
+                language=settings.ocr_language,
+                enabled=True,
+            )
+            if confidence_a > 0:
+                ocr_confidences.append(confidence_a)
+        if use_ocr_b:
+            final_b, confidence_b = extract_ocr_words(
+                aligned_b.convert("RGB"),
+                confidence_threshold=settings.ocr_confidence_threshold,
+                adapter=settings.ocr_adapter,
+                language=settings.ocr_language,
+                enabled=True,
+            )
+            if confidence_b > 0:
+                ocr_confidences.append(confidence_b)
+        if final_a or final_b:
+            return word_diff_page(final_a, final_b, page)
+        return []
+
+    if words_a or words_b:
+        return word_diff_page(words_a, words_b, page)
+    return []
 
 
 def _page_metadata(page: int, processed: list[PreprocessedImage]) -> list[dict[str, Any]]:
@@ -532,7 +599,7 @@ def _renderer_hint(file_type: str) -> dict[str, Any]:
     if file_type == "image":
         return {"type": "image", "supports_overlays": True, "primary_axis": "page"}
     if file_type == "docx":
-        return {"type": "docx", "supports_overlays": False, "primary_axis": "paragraph"}
+        return {"type": "docx", "supports_overlays": True, "primary_axis": "page"}
     if file_type == "xlsx":
         return {"type": "xlsx", "supports_overlays": False, "primary_axis": "sheet"}
     if file_type == "pptx":

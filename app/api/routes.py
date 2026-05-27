@@ -372,8 +372,19 @@ def job_preview_manifest(request: Request, job_id: str, label: str) -> dict[str,
         page_count = _pdf_page_count(storage.read_bytes(artifact_path))
     elif file_type == "image":
         page_count = 1
+    elif file_type == "pptx":
+        from app.services.comparison.pptx_render import pptx_slide_count
+
+        page_count = pptx_slide_count(storage.read_bytes(artifact_path))
+    elif file_type == "docx":
+        from app.services.comparison.docx_render import estimate_page_count
+
+        page_count = estimate_page_count(storage.read_bytes(artifact_path))
     else:
-        raise HTTPException(status_code=415, detail="Preview manifest is available for PDF/image")
+        raise HTTPException(
+            status_code=415,
+            detail="Preview manifest is available for PDF, image, PPTX, and DOCX",
+        )
     return {"label": label, "file_type": file_type, "page_count": page_count}
 
 
@@ -390,8 +401,29 @@ def job_preview_page(request: Request, job_id: str, label: str, page: int) -> Re
         image_bytes = _render_pdf_page(content, page)
     elif file_type == "image" and page == 1:
         image_bytes = _normalize_image_preview(content)
+    elif file_type == "pptx":
+        from app.services.comparison.pptx_render import render_pptx_slide_png
+
+        try:
+            image_bytes = render_pptx_slide_png(content, page)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+    elif file_type == "docx":
+        from app.services.comparison.docx_render import render_docx_page_png
+
+        try:
+            image_bytes = render_docx_page_png(content, page)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
     else:
-        raise HTTPException(status_code=415, detail="Preview page is available for PDF/image")
+        raise HTTPException(
+            status_code=415,
+            detail="Preview page is available for PDF, image, PPTX, and DOCX",
+        )
     add_audit_event(
         event_type="preview_accessed",
         job_id=job_id,

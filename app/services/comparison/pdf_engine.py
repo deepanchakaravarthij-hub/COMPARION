@@ -8,7 +8,10 @@ from typing import Any
 import fitz  # type: ignore[import-untyped]
 from PIL import Image
 
+from app.services.comparison.embedded_image import EmbeddedImage, sha256_bytes
+
 _MAX_PAGES = 10
+_DEFAULT_MAX_IMAGES_PER_PAGE = 50
 _TEXT_EQUAL_THRESHOLD = 0.88
 _MIN_MATCH_SCORE = 0.35
 _MAX_CENTER_DISTANCE = 0.05
@@ -58,6 +61,64 @@ def extract_page_words(content: bytes, max_pages: int = _MAX_PAGES) -> list[list
                     }
                 )
             pages.append(word_data)
+    return pages
+
+
+def extract_page_images(
+    content: bytes,
+    max_pages: int = _MAX_PAGES,
+    max_per_page: int = _DEFAULT_MAX_IMAGES_PER_PAGE,
+) -> list[list[EmbeddedImage]]:
+    pages: list[list[EmbeddedImage]] = []
+    with fitz.open(stream=content, filetype="pdf") as document:
+        for page_idx in range(min(document.page_count, max_pages)):
+            page_number = page_idx + 1
+            page = document.load_page(page_idx)
+            rect = page.rect
+            page_width, page_height = rect.width, rect.height
+            if page_width <= 0 or page_height <= 0:
+                pages.append([])
+                continue
+
+            page_images: list[EmbeddedImage] = []
+            seen_xrefs: set[int] = set()
+            for image_index, image_info in enumerate(page.get_images(full=True)):
+                if len(page_images) >= max_per_page:
+                    break
+                xref = int(image_info[0])
+                if xref in seen_xrefs:
+                    continue
+                seen_xrefs.add(xref)
+                try:
+                    extracted = document.extract_image(xref)
+                    blob = extracted["image"]
+                except (RuntimeError, ValueError):
+                    continue
+                try:
+                    rects = page.get_image_rects(xref)
+                except (RuntimeError, ValueError):
+                    rects = []
+                if not rects:
+                    continue
+                for rect_index, image_rect in enumerate(rects):
+                    if len(page_images) >= max_per_page:
+                        break
+                    bbox = (
+                        image_rect.x0 / page_width,
+                        image_rect.y0 / page_height,
+                        (image_rect.x1 - image_rect.x0) / page_width,
+                        (image_rect.y1 - image_rect.y0) / page_height,
+                    )
+                    page_images.append(
+                        EmbeddedImage(
+                            image_id=f"p{page_number}-xref{xref}-r{rect_index}",
+                            page=page_number,
+                            bbox=bbox,
+                            blob=blob,
+                            sha256=sha256_bytes(blob),
+                        )
+                    )
+            pages.append(page_images)
     return pages
 
 

@@ -29,9 +29,19 @@ function overlayClass(change: ChangeItem, activeId: string | null): string {
   return [base, tone, text, active].filter(Boolean).join(" ");
 }
 
-function isVisibleOverlay(bbox: NonNullable<ChangeItem["bbox"]>) {
+function isVisibleOverlay(bbox: NonNullable<ChangeItem["bbox"]>, category?: string) {
   const area = bbox.width * bbox.height;
+  if (category === "structure" && area >= 0.99) {
+    return true;
+  }
   return area > 0.0005 && area < 0.9;
+}
+
+function activePageNumber(change: ChangeItem | null) {
+  if (!change) {
+    return 1;
+  }
+  return change.source_ref.page ?? change.source_ref.slide ?? 1;
 }
 
 export function PdfImageRenderer({
@@ -46,9 +56,12 @@ export function PdfImageRenderer({
 }: PdfImageRendererProps) {
   const { objectUrl, error } = useArtifactObjectUrl(artifact);
   const isPdf = result.file_type === "pdf";
-  const pageCount = previewManifest?.page_count ?? (isPdf ? 0 : 1);
-  const previewPages = usePreviewPages(jobId, document, isPdf ? pageCount : 0);
-  const activePage = activeChange?.source_ref.page ?? 1;
+  const isPptx = result.file_type === "pptx";
+  const isDocx = result.file_type === "docx";
+  const usesPageStack = isPdf || isPptx || isDocx;
+  const pageCount = previewManifest?.page_count ?? (usesPageStack ? 0 : 1);
+  const previewPages = usePreviewPages(jobId, document, usesPageStack ? pageCount : 0);
+  const activePage = activePageNumber(activeChange);
 
   // Changes that belong to this document side and have a bbox
   const sideChanges = allChanges.filter(
@@ -60,7 +73,15 @@ export function PdfImageRenderer({
       <div className="document-pane-header">
         <div>
           <h3>{title}</h3>
-          <p>{isPdf ? `${pageCount || "-"} pages` : "Image preview"}</p>
+          <p>
+            {isPdf
+              ? `${pageCount || "-"} pages`
+              : isPptx
+                ? `${pageCount || "-"} slides`
+                : isDocx
+                  ? `${pageCount || "-"} pages`
+                  : "Image preview"}
+          </p>
         </div>
         <div className="document-page-control">
           <span>{activePage}</span>
@@ -72,12 +93,16 @@ export function PdfImageRenderer({
         {error || previewPages.error ? (
           <p className="badge danger">{error || previewPages.error}</p>
         ) : null}
-        {isPdf && !previewPages.pages.length ? <p className="muted">Rendering pages...</p> : null}
-        {isPdf ? (
+        {usesPageStack && !previewPages.pages.length ? (
+          <p className="muted">
+            {isPptx ? "Rendering slides..." : isDocx ? "Rendering document pages..." : "Rendering pages..."}
+          </p>
+        ) : null}
+        {usesPageStack ? (
           <div className="page-stack">
             {previewPages.pages.map((page) => {
               const pageOverlays = sideChanges.filter(
-                (c) => c.bbox?.page === page.page && isVisibleOverlay(c.bbox)
+                (c) => c.bbox?.page === page.page && isVisibleOverlay(c.bbox, c.category)
               );
               return (
                 <div
@@ -103,7 +128,7 @@ export function PdfImageRenderer({
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img alt={`${title} artifact`} src={objectUrl} />
             {sideChanges
-              .filter((c) => c.bbox && isVisibleOverlay(c.bbox))
+              .filter((c) => c.bbox && isVisibleOverlay(c.bbox, c.category))
               .map((change) => (
                 <span
                   className={overlayClass(change, activeChange?.id ?? null)}

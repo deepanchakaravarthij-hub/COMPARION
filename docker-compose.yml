@@ -1,8 +1,12 @@
 services:
   api:
-    build: .
+    build:
+      context: .
+      args:
+        USE_GPU: ${COMPARION_OCR_USE_GPU:-0}
     env_file:
       - .env
+    gpus: all
     ports:
       - "8000:8000"
     volumes:

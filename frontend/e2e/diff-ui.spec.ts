@@ -145,7 +145,7 @@ function sourceRef(fileType: string) {
     return { document: "both", sheet: "Summary", cell: "B2" };
   }
   if (fileType === "pptx") {
-    return { document: "both", slide: 1 };
+    return { document: "both", slide: 1, page: 1 };
   }
   if (fileType === "docx") {
     return { document: "both", part: "body", paragraph: 1 };

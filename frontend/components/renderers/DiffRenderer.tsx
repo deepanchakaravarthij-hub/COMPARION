@@ -1,10 +1,8 @@
 "use client";
 
 import type { ArtifactLink, ChangeItem, JobResult, PreviewManifest } from "@/lib/types";
-import { DocxRenderer } from "./DocxRenderer";
 import { FallbackRenderer } from "./FallbackRenderer";
 import { PdfImageRenderer } from "./PdfImageRenderer";
-import { PptxRenderer } from "./PptxRenderer";
 import { XlsxRenderer } from "./XlsxRenderer";
 
 interface DiffRendererProps {
@@ -32,7 +30,12 @@ export function DiffRenderer({
 }: DiffRendererProps) {
   const artifact = document === "a" ? artifactA : artifactB;
 
-  if (result.file_type === "pdf" || result.file_type === "image") {
+  if (
+    result.file_type === "pdf" ||
+    result.file_type === "image" ||
+    result.file_type === "pptx" ||
+    result.file_type === "docx"
+  ) {
     return (
       <PdfImageRenderer
         allChanges={allChanges}
@@ -47,33 +50,9 @@ export function DiffRenderer({
     );
   }
 
-  if (result.file_type === "docx") {
-    return (
-      <DocxRenderer
-        activeChange={activeChange}
-        artifact={artifact}
-        document={document}
-        result={result}
-        title={title}
-      />
-    );
-  }
-
   if (result.file_type === "xlsx") {
     return (
       <XlsxRenderer
-        activeChange={activeChange}
-        artifact={artifact}
-        document={document}
-        result={result}
-        title={title}
-      />
-    );
-  }
-
-  if (result.file_type === "pptx") {
-    return (
-      <PptxRenderer
         activeChange={activeChange}
         artifact={artifact}
         document={document}

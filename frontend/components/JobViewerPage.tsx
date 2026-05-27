@@ -31,7 +31,8 @@ export function JobViewerPage({ jobId }: { jobId: string }) {
     queries: (["a", "b"] as const).map((label) => ({
       queryKey: ["preview-manifest", jobId, label],
       queryFn: () => fetchPreviewManifest(jobId, label),
-      enabled: isComplete && ["pdf", "image"].includes(jobQuery.data?.file_a_type ?? ""),
+      enabled:
+        isComplete && ["pdf", "image", "pptx", "docx"].includes(jobQuery.data?.file_a_type ?? ""),
       retry: false
     }))
   });

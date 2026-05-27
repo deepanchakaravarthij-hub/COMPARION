@@ -442,6 +442,40 @@ def test_compare_pptx_and_fetch_result_and_report() -> None:
 
     report_res = client.get(f"/v1/jobs/{job_id}/report.html")
     assert report_res.status_code == 200
+
+    from app.services.comparison.pptx_render import libreoffice_available
+
+    if libreoffice_available():
+        preview_manifest_res = client.get(f"/v1/jobs/{job_id}/preview/a/manifest")
+        assert preview_manifest_res.status_code == 200
+        assert preview_manifest_res.json()["page_count"] == 2
+
+        preview_page_res = client.get(f"/v1/jobs/{job_id}/preview/a/page/1")
+        assert preview_page_res.status_code == 200
+        assert preview_page_res.headers["content-type"] == "image/png"
+        assert preview_page_res.content.startswith(b"\x89PNG")
+
+
+def test_compare_docx_preview_manifest_when_libreoffice_available() -> None:
+    from app.services.comparison.docx_render import libreoffice_available
+
+    if not libreoffice_available():
+        return
+
+    file_a = _docx_bytes([[("Alpha", False)]])
+    file_b = _docx_bytes([[("Beta", False)]])
+    compare_res = client.post(
+        "/v1/compare",
+        files={
+            "file_a": ("a.docx", file_a, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+            "file_b": ("b.docx", file_b, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+        },
+    )
+    assert compare_res.status_code == 200
+    job_id = compare_res.json()["job_id"]
+    manifest_res = client.get(f"/v1/jobs/{job_id}/preview/a/manifest")
+    assert manifest_res.status_code == 200
+    assert manifest_res.json()["page_count"] >= 1
     assert "Slide summary" in report_res.text
     assert "Object changes" in report_res.text
 
@@ -623,10 +657,10 @@ def test_image_prefers_ocr_text_highlights(monkeypatch: pytest.MonkeyPatch) -> N
 
     monkeypatch.setattr("app.services.compare_service.extract_ocr_words", fake_extract_ocr_words)
     result = compare_files("a.png", "b.png", _image_bytes(), _image_bytes(mark=True))
-    assert len(result["changes"]) == 2
-    assert {change["category"] for change in result["changes"]} == {"text"}
-    assert {change["type"] for change in result["changes"]} == {"removed", "added"}
-    for change in result["changes"]:
+    text_changes = [change for change in result["changes"] if change["category"] == "text"]
+    assert len(text_changes) == 2
+    assert {change["type"] for change in text_changes} == {"removed", "added"}
+    for change in text_changes:
         bbox = change["bbox"]
         assert bbox is not None
         assert bbox["width"] * bbox["height"] < 0.02

@@ -135,12 +135,25 @@ def _split_detection_tokens(
     ]
 
 
-@lru_cache(maxsize=4)
-def _get_easyocr_reader(language_key: str) -> Any:
+def _easyocr_use_gpu() -> bool:
+    from app.core.config import get_settings
+
+    if not get_settings().ocr_use_gpu:
+        return False
+    try:
+        import torch
+
+        return bool(torch.cuda.is_available())
+    except Exception:
+        return False
+
+
+@lru_cache(maxsize=8)
+def _get_easyocr_reader(language_key: str, use_gpu: bool) -> Any:
     import easyocr  # type: ignore[import-not-found]
 
     languages = [item.strip() for item in language_key.split(",") if item.strip()]
-    return easyocr.Reader(languages, gpu=False, verbose=False)
+    return easyocr.Reader(languages, gpu=use_gpu, verbose=False)
 
 
 class EasyOcrEngine:
@@ -156,7 +169,7 @@ class EasyOcrEngine:
             return OcrResult(text="", confidence=0.0, blocks=[])
 
         try:
-            reader = _get_easyocr_reader(",".join(self.languages))
+            reader = _get_easyocr_reader(",".join(self.languages), _easyocr_use_gpu())
         except Exception:
             return OcrResult(text="", confidence=0.0, blocks=[])
 

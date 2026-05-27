@@ -6,6 +6,7 @@ from io import BytesIO
 from typing import Any
 
 from docx import Document
+from docx.enum.shape import WD_INLINE_SHAPE_TYPE  # type: ignore[import-untyped]
 
 
 @dataclass(frozen=True)
@@ -75,6 +76,9 @@ class DocxImage:
     content_type: str | None
     filename: str | None
     source_ref: dict[str, Any]
+    blob: bytes
+    page: int
+    bbox: tuple[float, float, float, float] | None = None
 
 
 @dataclass(frozen=True)
@@ -108,10 +112,13 @@ def parse_docx(content: bytes, document_label: str) -> DocxDocumentModel:
         )
         _append_tables(tables, section.footer.tables, document_label, f"footer-{section_index}")
 
+    page_count = max(1, min(10, (len(paragraphs) // 25) + 1))
+    package_images = _extract_images(document, document_label, page_count)
+    inline_images = _extract_inline_images(document, document_label, page_count)
     return DocxDocumentModel(
         paragraphs=paragraphs,
         tables=tables,
-        images=_extract_images(document, document_label),
+        images=_merge_docx_images(package_images, inline_images),
     )
 
 
@@ -182,7 +189,7 @@ def _append_tables(
         target.append(DocxTable(rows=rows, source_ref=table_ref))
 
 
-def _extract_images(document: Any, document_label: str) -> list[DocxImage]:
+def _extract_images(document: Any, document_label: str, page_count: int) -> list[DocxImage]:
     images: list[DocxImage] = []
     relationships = sorted(document.part.rels.values(), key=lambda rel: rel.rId)
     for relationship in relationships:
@@ -197,14 +204,76 @@ def _extract_images(document: Any, document_label: str) -> list[DocxImage]:
                 filename=getattr(relationship, "target_ref", None),
                 source_ref={
                     "document": document_label,
-                    "page": None,
+                    "page": 1,
                     "part": "package",
                     "block_id": f"package:image:{len(images) + 1}",
                     "image": len(images) + 1,
                 },
+                blob=blob,
+                page=1,
+                bbox=(0.1, 0.1, 0.25, 0.25),
             )
         )
     return images
+
+
+def _extract_inline_images(document: Any, document_label: str, page_count: int) -> list[DocxImage]:
+    page_width_emu = 9_144_000
+    page_height_emu = 6_858_000
+    images: list[DocxImage] = []
+    inline_shapes = list(document.inline_shapes)
+    inline_count = max(len(inline_shapes), 1)
+    for index, inline_shape in enumerate(inline_shapes, start=1):
+        if inline_shape.type != WD_INLINE_SHAPE_TYPE.PICTURE:
+            continue
+        try:
+            blip = inline_shape._inline.graphic.graphicData.pic.blipFill.blip
+            embed = blip.embed
+            part = document.part.related_parts[embed]
+            blob = part.blob
+        except AttributeError:
+            continue
+        page = max(1, min(page_count, (index * page_count) // inline_count))
+        width = int(inline_shape.width) if inline_shape.width else page_width_emu // 4
+        height = int(inline_shape.height) if inline_shape.height else page_height_emu // 6
+        bbox = (
+            0.1,
+            min(0.85, 0.04 * (index - 1)),
+            min(0.8, width / page_width_emu),
+            min(0.5, height / page_height_emu),
+        )
+        images.append(
+            DocxImage(
+                sha256=hashlib.sha256(blob).hexdigest(),
+                content_type=getattr(part, "content_type", None),
+                filename=None,
+                source_ref={
+                    "document": document_label,
+                    "page": page,
+                    "part": "body",
+                    "block_id": f"inline:image:{index}",
+                    "image": index,
+                },
+                blob=blob,
+                page=page,
+                bbox=bbox,
+            )
+        )
+    return images
+
+
+def _merge_docx_images(
+    package_images: list[DocxImage],
+    inline_images: list[DocxImage],
+) -> list[DocxImage]:
+    merged: list[DocxImage] = []
+    seen: set[str] = set()
+    for image in [*inline_images, *package_images]:
+        if image.sha256 in seen:
+            continue
+        seen.add(image.sha256)
+        merged.append(image)
+    return merged
 
 
 def _paragraph_style(paragraph: Any) -> DocxStyle:

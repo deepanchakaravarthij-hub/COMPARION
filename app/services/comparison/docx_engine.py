@@ -4,13 +4,16 @@ from collections import Counter
 from difflib import SequenceMatcher
 from typing import Any
 
+from app.core.config import get_settings
 from app.services.comparison.docx_parser import (
     DocxDocumentModel,
+    DocxImage,
     DocxParagraph,
     DocxRun,
     DocxTable,
     parse_docx,
 )
+from app.services.comparison.embedded_image import EmbeddedImage, diff_embedded_images
 
 
 def compare_docx_documents(
@@ -323,34 +326,28 @@ def _image_changes(
     document_a: DocxDocumentModel,
     document_b: DocxDocumentModel,
 ) -> list[dict[str, Any]]:
-    changes: list[dict[str, Any]] = []
-    if len(document_a.images) != len(document_b.images):
-        changes.append(
-            _change(
-                "modified",
-                "image",
-                "medium",
-                0.9,
-                "Embedded image count modified: "
-                f"{len(document_a.images)} -> {len(document_b.images)}",
-                {"document": "both", "page": None, "part": "package"},
-            )
-        )
+    settings = get_settings()
+    return diff_embedded_images(
+        _docx_images_to_embedded(document_a.images),
+        _docx_images_to_embedded(document_b.images),
+        ssim_threshold=settings.image_ssim_threshold,
+    )
 
-    for image_a, image_b in zip(document_a.images, document_b.images, strict=False):
-        if image_a.sha256 == image_b.sha256:
-            continue
-        changes.append(
-            _change(
-                "modified",
-                "image",
-                "medium",
-                0.95,
-                f"Embedded image modified at index {image_a.source_ref['image']}",
-                _both_ref(image_a.source_ref),
+
+def _docx_images_to_embedded(images: list[DocxImage]) -> list[EmbeddedImage]:
+    embedded: list[EmbeddedImage] = []
+    for image in images:
+        bbox = image.bbox or (0.1, 0.1, 0.25, 0.25)
+        embedded.append(
+            EmbeddedImage(
+                image_id=str(image.source_ref.get("block_id", image.sha256[:8])),
+                page=image.page,
+                bbox=bbox,
+                blob=image.blob,
+                sha256=image.sha256,
             )
         )
-    return changes
+    return embedded
 
 
 def _move_changes(

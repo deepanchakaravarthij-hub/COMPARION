@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.core.config import get_settings
+from app.services.comparison.embedded_image import EmbeddedImage, diff_embedded_images, sha256_bytes
 from app.services.comparison.pptx_parser import PptxObject, PptxSlide, parse_pptx
 
 
@@ -20,42 +22,46 @@ def compare_pptx_presentations(
         presentation_b.slides,
     )
 
+    slide_width = max(presentation_a.slide_width_emu, presentation_b.slide_width_emu, 1)
+    slide_height = max(presentation_a.slide_height_emu, presentation_b.slide_height_emu, 1)
+
     for slide in removed_slides:
         changes.append(
-            _change(
+            _structure_change(
                 "removed",
-                "structure",
-                "high",
-                0.95,
                 f"Slide removed at position {slide.index}",
                 {"document": "a", "slide": slide.index},
+                slide.index,
             )
         )
     for slide in added_slides:
         changes.append(
-            _change(
+            _structure_change(
                 "added",
-                "structure",
-                "high",
-                0.95,
                 f"Slide added at position {slide.index}",
                 {"document": "b", "slide": slide.index},
+                slide.index,
             )
         )
 
     for slide_a, slide_b in matches:
         if slide_a.index != slide_b.index:
             changes.append(
-                _change(
+                _structure_change(
                     "modified",
-                    "structure",
-                    "medium",
-                    0.9,
                     f"Slide reordered from {slide_a.index} to {slide_b.index}",
                     {"document": "both", "slide": slide_a.index},
+                    slide_a.index,
                 )
             )
-        _append_object_changes(changes, changed_objects, slide_a, slide_b)
+        _append_object_changes(
+            changes,
+            changed_objects,
+            slide_a,
+            slide_b,
+            slide_width,
+            slide_height,
+        )
 
     diagnostics = {
         "slide_count": {"a": len(presentation_a.slides), "b": len(presentation_b.slides)},
@@ -80,12 +86,22 @@ def _append_object_changes(
     changed_objects: list[dict[str, Any]],
     slide_a: PptxSlide,
     slide_b: PptxSlide,
+    slide_width: int,
+    slide_height: int,
 ) -> None:
-    max_objects = max(len(slide_a.objects), len(slide_b.objects))
-    for index in range(max_objects):
-        object_a = slide_a.objects[index] if index < len(slide_a.objects) else None
-        object_b = slide_b.objects[index] if index < len(slide_b.objects) else None
+    settings = get_settings()
+    changes.extend(
+        diff_embedded_images(
+            _pptx_images_to_embedded(slide_a.objects, slide_a.index, slide_width, slide_height),
+            _pptx_images_to_embedded(slide_b.objects, slide_b.index, slide_width, slide_height),
+            page=slide_a.index,
+            ssim_threshold=settings.image_ssim_threshold,
+        )
+    )
 
+    non_image_a = [object_ for object_ in slide_a.objects if object_.kind != "image"]
+    non_image_b = [object_ for object_ in slide_b.objects if object_.kind != "image"]
+    for object_a, object_b in _match_objects_by_signature(non_image_a, non_image_b):
         if object_a is None and object_b is not None:
             changes.append(
                 _object_change(
@@ -94,6 +110,8 @@ def _append_object_changes(
                     f"Object added on slide {slide_b.index}: {object_b.kind}",
                     {"document": "b", "slide": slide_b.index},
                     object_b,
+                    slide_width,
+                    slide_height,
                 )
             )
             changed_objects.append(_changed_object("added", slide_b.index, None, object_b))
@@ -106,14 +124,81 @@ def _append_object_changes(
                     f"Object removed on slide {slide_a.index}: {object_a.kind}",
                     {"document": "a", "slide": slide_a.index},
                     object_a,
+                    slide_width,
+                    slide_height,
                 )
             )
             changed_objects.append(_changed_object("removed", slide_a.index, object_a, None))
             continue
         if object_a is None or object_b is None:
             continue
+        _compare_object_pair(
+            changes,
+            changed_objects,
+            slide_a,
+            slide_b,
+            object_a,
+            object_b,
+            slide_width,
+            slide_height,
+        )
 
-        _compare_object_pair(changes, changed_objects, slide_a, slide_b, object_a, object_b)
+
+def _pptx_images_to_embedded(
+    objects: list[PptxObject],
+    slide_index: int,
+    slide_width: int,
+    slide_height: int,
+) -> list[EmbeddedImage]:
+    embedded: list[EmbeddedImage] = []
+    for object_ in objects:
+        if object_.kind != "image" or not object_.image_blob or not object_.bbox:
+            continue
+        left, top, width, height = object_.bbox
+        embedded.append(
+            EmbeddedImage(
+                image_id=object_.object_id,
+                page=slide_index,
+                bbox=(
+                    left / slide_width,
+                    top / slide_height,
+                    width / slide_width,
+                    height / slide_height,
+                ),
+                blob=object_.image_blob,
+                sha256=object_.image_sha256 or sha256_bytes(object_.image_blob),
+            )
+        )
+    return embedded
+
+
+def _object_match_key(object_: PptxObject) -> str:
+    if object_.kind == "text":
+        return f"text|{object_.text}"
+    if object_.kind == "table":
+        return f"table|{object_.table_cells}"
+    return object_.content_signature
+
+
+def _match_objects_by_signature(
+    objects_a: list[PptxObject],
+    objects_b: list[PptxObject],
+) -> list[tuple[PptxObject | None, PptxObject | None]]:
+    remaining_b = list(objects_b)
+    pairs: list[tuple[PptxObject | None, PptxObject | None]] = []
+    for object_a in objects_a:
+        match = next(
+            (candidate for candidate in remaining_b if _object_match_key(candidate) == _object_match_key(object_a)),
+            None,
+        )
+        if match is not None:
+            remaining_b.remove(match)
+            pairs.append((object_a, match))
+        else:
+            pairs.append((object_a, None))
+    for object_b in remaining_b:
+        pairs.append((None, object_b))
+    return pairs
 
 
 def _compare_object_pair(
@@ -123,6 +208,8 @@ def _compare_object_pair(
     slide_b: PptxSlide,
     object_a: PptxObject,
     object_b: PptxObject,
+    slide_width: int,
+    slide_height: int,
 ) -> None:
     if object_a.kind != object_b.kind:
         changes.append(
@@ -139,15 +226,31 @@ def _compare_object_pair(
         return
 
     if object_a.kind == "text":
+        message = (
+            f"Text changed on slide {slide_a.index}: "
+            f"{object_a.text!r} -> {object_b.text!r}"
+        )
         if object_a.text != object_b.text:
             changes.append(
                 _object_change(
-                    "modified",
+                    "removed",
                     "text",
-                    f"Text changed on slide {slide_a.index}: "
-                    f"{object_a.text!r} -> {object_b.text!r}",
-                    {"document": "both", "slide": slide_a.index},
+                    message,
+                    {"document": "a", "slide": slide_a.index},
                     object_a,
+                    slide_width,
+                    slide_height,
+                )
+            )
+            changes.append(
+                _object_change(
+                    "added",
+                    "text",
+                    message,
+                    {"document": "b", "slide": slide_b.index},
+                    object_b,
+                    slide_width,
+                    slide_height,
                 )
             )
             changed_objects.append(_changed_object("text", slide_a.index, object_a, object_b))
@@ -159,6 +262,8 @@ def _compare_object_pair(
                     f"Text style changed on slide {slide_a.index}",
                     {"document": "both", "slide": slide_a.index},
                     object_a,
+                    slide_width,
+                    slide_height,
                 )
             )
             changed_objects.append(_changed_object("formatting", slide_a.index, object_a, object_b))
@@ -166,34 +271,48 @@ def _compare_object_pair(
         if object_a.table_cells != object_b.table_cells:
             changes.append(
                 _object_change(
-                    "modified",
+                    "removed",
                     "table",
                     f"Table changed on slide {slide_a.index}",
-                    {"document": "both", "slide": slide_a.index},
+                    {"document": "a", "slide": slide_a.index},
                     object_a,
+                    slide_width,
+                    slide_height,
+                )
+            )
+            changes.append(
+                _object_change(
+                    "added",
+                    "table",
+                    f"Table changed on slide {slide_b.index}",
+                    {"document": "b", "slide": slide_b.index},
+                    object_b,
+                    slide_width,
+                    slide_height,
                 )
             )
             changed_objects.append(_changed_object("table", slide_a.index, object_a, object_b))
-    elif object_a.kind == "image":
-        if object_a.image_sha256 != object_b.image_sha256:
-            changes.append(
-                _object_change(
-                    "modified",
-                    "image",
-                    f"Image changed on slide {slide_a.index}",
-                    {"document": "both", "slide": slide_a.index},
-                    object_a,
-                )
-            )
-            changed_objects.append(_changed_object("image", slide_a.index, object_a, object_b))
     elif object_a.shape_signature != object_b.shape_signature or object_a.text != object_b.text:
         changes.append(
             _object_change(
-                "modified",
+                "removed",
                 "structure",
                 f"Shape changed on slide {slide_a.index}",
-                {"document": "both", "slide": slide_a.index},
+                {"document": "a", "slide": slide_a.index},
                 object_a,
+                slide_width,
+                slide_height,
+            )
+        )
+        changes.append(
+            _object_change(
+                "added",
+                "structure",
+                f"Shape changed on slide {slide_b.index}",
+                {"document": "b", "slide": slide_b.index},
+                object_b,
+                slide_width,
+                slide_height,
             )
         )
         changed_objects.append(_changed_object("shape", slide_a.index, object_a, object_b))
@@ -206,6 +325,8 @@ def _compare_object_pair(
                 f"Object position changed on slide {slide_a.index}",
                 {"document": "both", "slide": slide_a.index},
                 object_a,
+                slide_width,
+                slide_height,
             )
         )
 
@@ -250,13 +371,42 @@ def _match_slides(
     return matches, removed_slides, added_slides
 
 
+def _structure_change(
+    change_type: str,
+    message: str,
+    source_ref: dict[str, Any],
+    slide_index: int,
+) -> dict[str, Any]:
+    source_ref = {**source_ref, "page": slide_index}
+    payload = _change(
+        change_type,
+        "structure",
+        "high",
+        0.95,
+        message,
+        source_ref,
+    )
+    payload["bbox"] = {
+        "page": slide_index,
+        "x": 0.0,
+        "y": 0.0,
+        "width": 1.0,
+        "height": 1.0,
+    }
+    return payload
+
+
 def _object_change(
     change_type: str,
     category: str,
     message: str,
     source_ref: dict[str, Any],
     object_: PptxObject,
+    slide_width: int,
+    slide_height: int,
 ) -> dict[str, Any]:
+    slide_index = int(source_ref["slide"])
+    source_ref = {**source_ref, "page": slide_index}
     payload = _change(
         change_type,
         category,
@@ -268,11 +418,11 @@ def _object_change(
     if object_.bbox:
         left, top, width, height = object_.bbox
         payload["bbox"] = {
-            "page": source_ref["slide"],
-            "x": round(left / 10_000_000, 4),
-            "y": round(top / 10_000_000, 4),
-            "width": round(width / 10_000_000, 4),
-            "height": round(height / 10_000_000, 4),
+            "page": slide_index,
+            "x": round(left / slide_width, 4),
+            "y": round(top / slide_height, 4),
+            "width": round(width / slide_width, 4),
+            "height": round(height / slide_height, 4),
         }
     return payload
 

@@ -16,6 +16,7 @@ class PptxObject:
     text: str | None
     table_cells: tuple[tuple[str, ...], ...] | None
     image_sha256: str | None
+    image_blob: bytes | None
     shape_signature: str | None
     style_signature: str | None
     bbox: tuple[float, float, float, float] | None
@@ -44,6 +45,8 @@ class PptxSlide:
 @dataclass(frozen=True)
 class PptxPresentationModel:
     slides: list[PptxSlide]
+    slide_width_emu: int
+    slide_height_emu: int
 
 
 def parse_pptx(content: bytes) -> PptxPresentationModel:
@@ -51,7 +54,11 @@ def parse_pptx(content: bytes) -> PptxPresentationModel:
     slides = [
         _parse_slide(slide, index) for index, slide in enumerate(presentation.slides, start=1)
     ]
-    return PptxPresentationModel(slides=slides)
+    return PptxPresentationModel(
+        slides=slides,
+        slide_width_emu=int(presentation.slide_width),
+        slide_height_emu=int(presentation.slide_height),
+    )
 
 
 def _parse_slide(slide: Any, slide_index: int) -> PptxSlide:
@@ -59,71 +66,96 @@ def _parse_slide(slide: Any, slide_index: int) -> PptxSlide:
     title_shape = slide.shapes.title
     title = title_shape.text.strip() if title_shape is not None and title_shape.text else None
 
-    for object_index, shape in enumerate(slide.shapes, start=1):
-        object_id = f"s{slide_index}-o{object_index}"
-        bbox = _bbox(shape)
-        if getattr(shape, "has_text_frame", False):
-            text = _normalize_text(shape.text_frame.text if shape.text_frame else "")
-            if text:
-                objects.append(
-                    PptxObject(
-                        object_id=object_id,
-                        kind="text",
-                        text=text,
-                        table_cells=None,
-                        image_sha256=None,
-                        shape_signature=None,
-                        style_signature=_text_style_signature(shape),
-                        bbox=bbox,
-                    )
-                )
-                continue
+    for shape in slide.shapes:
+        _collect_shape_objects(shape, slide_index, objects, counter=[0])
+    return _finalize_slide(slide_index, title, objects)
 
-        if getattr(shape, "has_table", False):
-            table_cells = _table_cells(shape.table)
+
+def _collect_shape_objects(
+    shape: Any,
+    slide_index: int,
+    objects: list[PptxObject],
+    *,
+    counter: list[int],
+    group_prefix: str = "",
+) -> None:
+    if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+        for group_index, child_shape in enumerate(shape.shapes, start=1):
+            prefix = f"{group_prefix}g{group_index}-"
+            _collect_shape_objects(child_shape, slide_index, objects, counter=counter, group_prefix=prefix)
+        return
+
+    counter[0] += 1
+    object_id = f"s{slide_index}-{group_prefix}o{counter[0]}"
+    bbox = _bbox(shape)
+    if getattr(shape, "has_text_frame", False):
+        text = _normalize_text(shape.text_frame.text if shape.text_frame else "")
+        if text:
             objects.append(
                 PptxObject(
                     object_id=object_id,
-                    kind="table",
-                    text=None,
-                    table_cells=table_cells,
-                    image_sha256=None,
-                    shape_signature=None,
-                    style_signature=None,
-                    bbox=bbox,
-                )
-            )
-            continue
-
-        if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
-            blob = shape.image.blob
-            objects.append(
-                PptxObject(
-                    object_id=object_id,
-                    kind="image",
-                    text=None,
+                    kind="text",
+                    text=text,
                     table_cells=None,
-                    image_sha256=hashlib.sha256(blob).hexdigest(),
+                    image_sha256=None,
+                    image_blob=None,
                     shape_signature=None,
-                    style_signature=None,
+                    style_signature=_text_style_signature(shape),
                     bbox=bbox,
                 )
             )
-            continue
+        return
 
+    if getattr(shape, "has_table", False):
+        table_cells = _table_cells(shape.table)
         objects.append(
             PptxObject(
                 object_id=object_id,
-                kind="shape",
-                text=_normalize_text(getattr(shape, "text", "") or ""),
-                table_cells=None,
+                kind="table",
+                text=None,
+                table_cells=table_cells,
                 image_sha256=None,
-                shape_signature=f"{shape.shape_type}|{shape.name}",
+                image_blob=None,
+                shape_signature=None,
                 style_signature=None,
                 bbox=bbox,
             )
         )
+        return
 
+    if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
+        blob = shape.image.blob
+        objects.append(
+            PptxObject(
+                object_id=object_id,
+                kind="image",
+                text=None,
+                table_cells=None,
+                image_sha256=hashlib.sha256(blob).hexdigest(),
+                image_blob=blob,
+                shape_signature=None,
+                style_signature=None,
+                bbox=bbox,
+            )
+        )
+        return
+
+    objects.append(
+        PptxObject(
+            object_id=object_id,
+            kind="shape",
+            text=_normalize_text(getattr(shape, "text", "") or ""),
+            table_cells=None,
+            image_sha256=None,
+            image_blob=None,
+            shape_signature=f"{shape.shape_type}|{shape.name}",
+            style_signature=None,
+            bbox=bbox,
+        )
+    )
+
+
+def _finalize_slide(slide_index: int, title: str | None, objects: list[PptxObject]) -> PptxSlide:
     return PptxSlide(index=slide_index, title=title, objects=objects)
 
 

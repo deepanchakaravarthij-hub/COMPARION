@@ -8,6 +8,8 @@ import numpy as np
 from PIL import Image, ImageChops
 from skimage.metrics import structural_similarity
 
+from app.services.comparison.embedded_image import overlaps_mask
+
 
 def load_normalized_image(content: bytes, size: tuple[int, int] | None = None) -> Image.Image:
     image = Image.open(BytesIO(content)).convert("L")
@@ -42,6 +44,20 @@ def _normalize_bbox(
     }
 
 
+def _region_category(
+    left: int,
+    top: int,
+    right: int,
+    bottom: int,
+    width: int,
+    height: int,
+) -> str:
+    area_ratio = ((right - left) * (bottom - top)) / (width * height) if width and height else 0.0
+    if 0.001 <= area_ratio <= 0.4:
+        return "image"
+    return "visual"
+
+
 def _region_change(
     left: int,
     top: int,
@@ -56,12 +72,14 @@ def _region_change(
     region_index: int,
     total_regions: int,
 ) -> dict[str, Any]:
-    message = f"Visual difference detected on page {page}"
+    category = _region_category(left, top, right, bottom, width, height)
+    label = "Image" if category == "image" else "Visual"
+    message = f"{label} difference detected on page {page}"
     if total_regions > 1:
         message = f"{message} (region {region_index} of {total_regions})"
     return {
         "type": "modified",
-        "category": "visual",
+        "category": category,
         "severity": "high" if ratio > 0.05 else "medium" if ratio > 0.01 else "low",
         "confidence": confidence,
         "message": message,
@@ -79,6 +97,8 @@ def visual_changes(
     min_region_pixels: int = 120,
     max_regions: int = 40,
     max_region_area_ratio: float = 0.85,
+    mask_bboxes: list[tuple[float, float, float, float]] | None = None,
+    mask_iou_threshold: float = 0.15,
 ) -> list[dict[str, Any]]:
     """Detect localized visual differences and return one change per region."""
     target_size = (
@@ -120,6 +140,20 @@ def visual_changes(
 
     regions.sort(key=lambda item: item[4], reverse=True)
     regions = regions[:max_regions]
+
+    if mask_bboxes:
+        filtered: list[tuple[int, int, int, int, int]] = []
+        for left, top, right, bottom, area in regions:
+            norm = (
+                left / width,
+                top / height,
+                (right - left) / width,
+                (bottom - top) / height,
+            )
+            if overlaps_mask(norm, mask_bboxes, min_iou=mask_iou_threshold):
+                continue
+            filtered.append((left, top, right, bottom, area))
+        regions = filtered
 
     if not regions:
         bbox = diff.getbbox()
