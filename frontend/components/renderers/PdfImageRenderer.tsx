@@ -6,7 +6,7 @@ import { useArtifactObjectUrl } from "./useArtifactObjectUrl";
 import { usePreviewPages } from "./usePreviewPages";
 
 interface PdfImageRendererProps {
-  allChanges: ChangeItem[];
+  allChanges?: ChangeItem[];
   artifact: ArtifactLink;
   activeChange: ChangeItem | null;
   document: "a" | "b";
@@ -24,12 +24,18 @@ function overlayClass(change: ChangeItem, activeId: string | null): string {
       : change.type === "added"
         ? "overlay-added"
         : "overlay-modified";
+  const text = change.category === "text" ? "overlay-text" : "";
   const active = change.id === activeId ? "overlay-active" : "";
-  return [base, tone, active].filter(Boolean).join(" ");
+  return [base, tone, text, active].filter(Boolean).join(" ");
+}
+
+function isVisibleOverlay(bbox: NonNullable<ChangeItem["bbox"]>) {
+  const area = bbox.width * bbox.height;
+  return area > 0.0005 && area < 0.9;
 }
 
 export function PdfImageRenderer({
-  allChanges,
+  allChanges = [],
   artifact,
   activeChange,
   document,
@@ -70,7 +76,9 @@ export function PdfImageRenderer({
         {isPdf ? (
           <div className="page-stack">
             {previewPages.pages.map((page) => {
-              const pageOverlays = sideChanges.filter((c) => c.bbox?.page === page.page);
+              const pageOverlays = sideChanges.filter(
+                (c) => c.bbox?.page === page.page && isVisibleOverlay(c.bbox)
+              );
               return (
                 <div
                   className={`rendered-page ${activePage === page.page ? "current-page" : ""}`}
@@ -95,12 +103,13 @@ export function PdfImageRenderer({
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img alt={`${title} artifact`} src={objectUrl} />
             {sideChanges
-              .filter((c) => c.bbox)
+              .filter((c) => c.bbox && isVisibleOverlay(c.bbox))
               .map((change) => (
                 <span
                   className={overlayClass(change, activeChange?.id ?? null)}
                   key={change.id}
                   style={normalizedBoxStyle(change.bbox)}
+                  title={change.message}
                 />
               ))}
           </div>

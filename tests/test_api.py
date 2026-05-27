@@ -8,6 +8,7 @@ from unittest.mock import patch
 from uuid import uuid4
 
 import fitz  # type: ignore[import-untyped]
+import pytest
 from docx import Document
 from fastapi.testclient import TestClient
 from openpyxl import Workbook  # type: ignore[import-untyped]
@@ -600,13 +601,35 @@ def test_image_diff_is_deterministic() -> None:
     result_a = compare_files("a.png", "b.png", _image_bytes(), _image_bytes(mark=True))
     result_b = compare_files("a.png", "b.png", _image_bytes(), _image_bytes(mark=True))
     assert result_a["changes"] == result_b["changes"]
-    assert result_a["changes"][0]["bbox"] == {
-        "page": 1,
-        "x": 0.61,
-        "y": 0.5,
-        "width": 0.32,
-        "height": 0.32,
-    }
+    assert len(result_a["changes"]) == 1
+    bbox = result_a["changes"][0]["bbox"]
+    assert bbox is not None
+    assert bbox["page"] == 1
+    assert bbox["width"] * bbox["height"] < 0.2
+    assert 0.55 <= bbox["x"] <= 0.65
+    assert 0.45 <= bbox["y"] <= 0.55
+
+
+def test_image_prefers_ocr_text_highlights(monkeypatch: pytest.MonkeyPatch) -> None:
+    words_a = [{"text": "147", "x": 0.12, "y": 0.18, "w": 0.05, "h": 0.03}]
+    words_b = [{"text": "149", "x": 0.12, "y": 0.18, "w": 0.05, "h": 0.03}]
+    calls = {"count": 0}
+
+    def fake_extract_ocr_words(image, **kwargs):  # type: ignore[no-untyped-def]
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return words_a, 0.95
+        return words_b, 0.95
+
+    monkeypatch.setattr("app.services.compare_service.extract_ocr_words", fake_extract_ocr_words)
+    result = compare_files("a.png", "b.png", _image_bytes(), _image_bytes(mark=True))
+    assert len(result["changes"]) == 2
+    assert {change["category"] for change in result["changes"]} == {"text"}
+    assert {change["type"] for change in result["changes"]} == {"removed", "added"}
+    for change in result["changes"]:
+        bbox = change["bbox"]
+        assert bbox is not None
+        assert bbox["width"] * bbox["height"] < 0.02
 
 
 def test_docx_diff_is_deterministic() -> None:

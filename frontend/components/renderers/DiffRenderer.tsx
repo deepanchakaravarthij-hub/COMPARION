@@ -8,7 +8,7 @@ import { PptxRenderer } from "./PptxRenderer";
 import { XlsxRenderer } from "./XlsxRenderer";
 
 interface DiffRendererProps {
-  allChanges: ChangeItem[];
+  allChanges?: ChangeItem[];
   artifactA: ArtifactLink;
   artifactB: ArtifactLink;
   activeChange: ChangeItem | null;

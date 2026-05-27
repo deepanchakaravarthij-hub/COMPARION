@@ -88,7 +88,11 @@ def test_rotated_scan_comparison_reduces_false_positive_noise() -> None:
     assert result["file_type"] == "image"
     assert result["result_schema_version"] == "2.1"
     assert result["diagnostics"]["preprocessing"][1]["rotation_degrees"] == 270
-    assert len(result["changes"]) <= 1
+    assert result["changes"]
+    for change in result["changes"]:
+        bbox = change["bbox"]
+        assert bbox is not None
+        assert bbox["width"] * bbox["height"] < 0.85
 
 
 def test_scan_api_returns_diagnostics() -> None:

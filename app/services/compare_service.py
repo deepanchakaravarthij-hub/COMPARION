@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from io import BytesIO
 from typing import Any
 
 from PIL import Image
@@ -14,8 +15,8 @@ from app.services.comparison.alignment import (
 )
 from app.services.comparison.debug_artifacts import debug_artifact, save_debug_image
 from app.services.comparison.docx_engine import compare_docx_documents
-from app.services.comparison.image_engine import load_normalized_image, visual_change
-from app.services.comparison.ocr import filter_tokens, get_ocr_engine
+from app.services.comparison.image_engine import load_normalized_image, visual_changes
+from app.services.comparison.ocr import extract_ocr_words, filter_tokens, get_ocr_engine
 from app.services.comparison.pdf_engine import (
     extract_page_words,
     extract_text,
@@ -125,8 +126,10 @@ def _compare_pdf(
         # Per-page word-level text diff with normalized bounding boxes
         wa = word_pages_a[index] if index < len(word_pages_a) else []
         wb = word_pages_b[index] if index < len(word_pages_b) else []
+        page_text_changes: list[dict[str, Any]] = []
         if wa or wb:
-            changes.extend(word_diff_page(wa, wb, page))
+            page_text_changes = word_diff_page(wa, wb, page)
+            changes.extend(page_text_changes)
         else:
             # Scanned/image-only page — fall back to OCR token diff (no spatial positions)
             text_a = extract_text(content_a)
@@ -137,7 +140,8 @@ def _compare_pdf(
             if not text_b.strip() and pages_b:
                 text_b, confidence_b = _ocr_text(pages_b[index])
                 ocr_confidences.append(confidence_b)
-            changes.extend(token_changes(text_a, text_b))
+            page_text_changes = token_changes(text_a, text_b)
+            changes.extend(page_text_changes)
 
         processed_a, processed_b, page_preprocessing = _prepare_pair(pages_a[index], pages_b[index])
         preprocessing.extend(_page_metadata(page, page_preprocessing))
@@ -151,9 +155,8 @@ def _compare_pdf(
         if artifact:
             artifacts.append(artifact)
 
-        visual = visual_change(processed_a.image, aligned_b, page=page)
-        if visual:
-            changes.append(visual)
+        if not page_text_changes:
+            changes.extend(visual_changes(processed_a.image, aligned_b, page=page))
 
     return _result(
         summary=_summary(changes),
@@ -176,6 +179,25 @@ def _compare_image(
     job_id: str | None,
     started_at: float,
 ) -> dict[str, Any]:
+    settings = get_settings()
+    image_a_rgb = Image.open(BytesIO(content_a)).convert("RGB")
+    image_b_rgb = Image.open(BytesIO(content_b)).convert("RGB")
+    words_a, confidence_a = extract_ocr_words(
+        image_a_rgb,
+        confidence_threshold=settings.ocr_confidence_threshold,
+        adapter=settings.ocr_adapter,
+        language=settings.ocr_language,
+        enabled=settings.ocr_enabled,
+    )
+    words_b, confidence_b = extract_ocr_words(
+        image_b_rgb,
+        confidence_threshold=settings.ocr_confidence_threshold,
+        adapter=settings.ocr_adapter,
+        language=settings.ocr_language,
+        enabled=settings.ocr_enabled,
+    )
+    ocr_confidences = [value for value in (confidence_a, confidence_b) if value > 0]
+
     image_a = load_normalized_image(content_a)
     image_b = load_normalized_image(content_b)
     processed_a, processed_b, preprocessing = _prepare_pair(image_a, image_b)
@@ -186,8 +208,10 @@ def _compare_image(
         1,
     )
     artifacts = [artifact] if artifact else []
-    visual = visual_change(processed_a.image, aligned_b)
-    changes = [visual] if visual else []
+
+    text_changes = word_diff_page(words_a, words_b, page=1) if words_a or words_b else []
+    changes = text_changes or visual_changes(processed_a.image, aligned_b)
+
     return _result(
         summary=_summary(changes),
         file_type="image",
@@ -197,7 +221,7 @@ def _compare_image(
             _page_metadata(1, preprocessing),
             [alignment_diagnostics(alignment, 1)],
             artifacts,
-            [],
+            ocr_confidences,
             change_count=len(changes),
         ),
     )
