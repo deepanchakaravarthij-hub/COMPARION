@@ -4,11 +4,13 @@ import { FormEvent, useState } from "react";
 import { getAuthToken, setAuthToken } from "@/lib/api-client";
 
 export function AuthTokenForm() {
-  const [token, setToken] = useState(() => getAuthToken());
+  const [token, setToken] = useState(() => getAuthToken() ?? "");
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setAuthToken(token);
+    const trimmed = token.trim();
+    setAuthToken(trimmed || null);
+    setToken(trimmed);
   }
 
   return (
