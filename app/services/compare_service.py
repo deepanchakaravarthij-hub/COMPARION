@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import time
 from io import BytesIO
 from typing import Any
@@ -31,6 +32,9 @@ from app.services.semantic import SemanticOptions, apply_semantic_layer
 from app.utils.filetype import detect_type
 
 RESULT_SCHEMA_VERSION = "2.1"
+_MONTH_NAMES = "jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec"
+_DATE_TICK_RE = re.compile(rf"^\d{{1,2}}\s*(?:{_MONTH_NAMES})$", re.IGNORECASE)
+_ROUND_AXIS_TICK_RE = re.compile(r"^-?(?:\d+|\d+\.\d+)(?:k|m|%)?$", re.IGNORECASE)
 
 
 def compare_files(
@@ -231,16 +235,20 @@ def _compare_image(
     )
     artifacts = [artifact] if artifact else []
 
-    text_changes = word_diff_page(words_a, words_b, page=1) if words_a or words_b else []
+    had_ocr_words = bool(words_a or words_b)
+    text_changes = word_diff_page(words_a, words_b, page=1) if had_ocr_words else []
+    if settings.image_value_text_only:
+        text_changes = _denoise_image_text_changes(text_changes)
+    text_changes = _collapse_image_modified_pairs(text_changes)
     changes: list[dict[str, Any]] = list(text_changes)
     mask_bboxes = bboxes_from_changes(text_changes)
-    if settings.pdf_supplement_visual or not text_changes:
+    if settings.image_supplement_visual or (not text_changes and not had_ocr_words):
         changes.extend(
             visual_changes(
                 processed_a.image,
                 aligned_b,
                 page=1,
-                mask_bboxes=mask_bboxes if settings.pdf_supplement_visual else None,
+                mask_bboxes=mask_bboxes if settings.image_supplement_visual else None,
             )
         )
 
@@ -257,6 +265,133 @@ def _compare_image(
             change_count=len(changes),
         ),
     )
+
+
+def _denoise_image_text_changes(changes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [change for change in changes if not _is_low_signal_image_text_change(change)]
+
+
+def _collapse_image_modified_pairs(changes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    collapsed: list[dict[str, Any]] = []
+    consumed: set[int] = set()
+
+    for index, change in enumerate(changes):
+        if index in consumed:
+            continue
+        pair_index = _find_image_modified_pair(index, change, changes, consumed)
+        if pair_index is None:
+            collapsed.append(change)
+            continue
+
+        consumed.add(index)
+        consumed.add(pair_index)
+        pair = changes[pair_index]
+        collapsed.append(
+            {
+                **change,
+                "type": "modified",
+                "source_ref": {
+                    **change.get("source_ref", {}),
+                    "document": "both",
+                },
+                "bbox": _merge_change_bboxes(change.get("bbox"), pair.get("bbox")),
+            }
+        )
+
+    return collapsed
+
+
+def _find_image_modified_pair(
+    index: int,
+    change: dict[str, Any],
+    changes: list[dict[str, Any]],
+    consumed: set[int],
+) -> int | None:
+    if change.get("category") != "text" or not str(change.get("message", "")).startswith(
+        "Text modified:"
+    ):
+        return None
+    document = (change.get("source_ref") or {}).get("document")
+    if document not in {"a", "b"}:
+        return None
+
+    other_document = "b" if document == "a" else "a"
+    message = change.get("message")
+    for pair_index in range(index + 1, len(changes)):
+        if pair_index in consumed:
+            continue
+        candidate = changes[pair_index]
+        if candidate.get("category") != "text":
+            continue
+        if candidate.get("message") != message:
+            continue
+        if (candidate.get("source_ref") or {}).get("document") == other_document:
+            return pair_index
+    return None
+
+
+def _merge_change_bboxes(
+    left: Any,
+    right: Any,
+) -> dict[str, float | int] | None:
+    if not isinstance(left, dict):
+        return right if isinstance(right, dict) else None
+    if not isinstance(right, dict):
+        return left
+
+    x0 = min(float(left.get("x", 0.0)), float(right.get("x", 0.0)))
+    y0 = min(float(left.get("y", 0.0)), float(right.get("y", 0.0)))
+    x1 = max(
+        float(left.get("x", 0.0)) + float(left.get("width", 0.0)),
+        float(right.get("x", 0.0)) + float(right.get("width", 0.0)),
+    )
+    y1 = max(
+        float(left.get("y", 0.0)) + float(left.get("height", 0.0)),
+        float(right.get("y", 0.0)) + float(right.get("height", 0.0)),
+    )
+    return {
+        "page": int(left.get("page") or right.get("page") or 1),
+        "x": x0,
+        "y": y0,
+        "width": x1 - x0,
+        "height": y1 - y0,
+    }
+
+
+def _is_low_signal_image_text_change(change: dict[str, Any]) -> bool:
+    if change.get("category") != "text":
+        return False
+
+    texts = _quoted_change_texts(str(change.get("message", "")))
+    if not texts:
+        return False
+
+    if not any(any(char.isdigit() for char in text) for text in texts):
+        return True
+
+    bbox = change.get("bbox") or {}
+    area = float(bbox.get("width", 0.0)) * float(bbox.get("height", 0.0))
+    return all(_is_chart_axis_text(text, area) for text in texts)
+
+
+def _quoted_change_texts(message: str) -> list[str]:
+    return [match.group(1) for match in re.finditer(r"'([^']*)'", message)]
+
+
+def _is_chart_axis_text(text: str, bbox_area: float) -> bool:
+    normalized = re.sub(r"\s+", "", text.strip().lower())
+    if not normalized:
+        return True
+    if _DATE_TICK_RE.match(normalized):
+        return True
+    if bbox_area > 0.0009 or not _ROUND_AXIS_TICK_RE.match(normalized):
+        return False
+    numeric = normalized.rstrip("%km")
+    try:
+        value = abs(float(numeric))
+    except ValueError:
+        return False
+    return value == 0 or value >= 5
 
 
 def _compare_docx(

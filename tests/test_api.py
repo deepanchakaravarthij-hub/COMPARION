@@ -658,12 +658,41 @@ def test_image_prefers_ocr_text_highlights(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr("app.services.compare_service.extract_ocr_words", fake_extract_ocr_words)
     result = compare_files("a.png", "b.png", _image_bytes(), _image_bytes(mark=True))
     text_changes = [change for change in result["changes"] if change["category"] == "text"]
-    assert len(text_changes) == 2
-    assert {change["type"] for change in text_changes} == {"removed", "added"}
+    assert len(text_changes) == 1
+    assert text_changes[0]["type"] == "modified"
+    assert text_changes[0]["source_ref"]["document"] == "both"
     for change in text_changes:
         bbox = change["bbox"]
         assert bbox is not None
         assert bbox["width"] * bbox["height"] < 0.02
+
+
+def test_image_ocr_denoises_dashboard_axis_and_label_noise(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    words_a = [
+        {"text": "User", "x": 0.15, "y": 0.10, "w": 0.03, "h": 0.02},
+        {"text": "acquisitions", "x": 0.19, "y": 0.10, "w": 0.08, "h": 0.02},
+        {"text": "149", "x": 0.12, "y": 0.18, "w": 0.05, "h": 0.03},
+        {"text": "100", "x": 0.12, "y": 0.42, "w": 0.02, "h": 0.015},
+        {"text": "20 Apr", "x": 0.12, "y": 0.52, "w": 0.025, "h": 0.015},
+    ]
+    words_b = [{"text": "147", "x": 0.12, "y": 0.18, "w": 0.05, "h": 0.03}]
+    calls = {"count": 0}
+
+    def fake_extract_ocr_words(image, **kwargs):  # type: ignore[no-untyped-def]
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return words_a, 0.95
+        return words_b, 0.95
+
+    monkeypatch.setattr("app.services.compare_service.extract_ocr_words", fake_extract_ocr_words)
+    result = compare_files("a.png", "b.png", _image_bytes(), _image_bytes())
+
+    messages = [change["message"] for change in result["changes"]]
+    assert len(messages) == 1
+    assert all("149" in message or "147" in message for message in messages)
+    assert not any("acquisitions" in message or "20 Apr" in message for message in messages)
 
 
 def test_docx_diff_is_deterministic() -> None:

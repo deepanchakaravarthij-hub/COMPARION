@@ -21,22 +21,20 @@ export function usePreviewPages(jobId: string, label: "a" | "b", pageCount: numb
       try {
         setError("");
         setPages([]);
-        const loadedPages = await Promise.all(
-          Array.from({ length: pageCount }, async (_, index) => {
-            const page = index + 1;
-            const response = await fetch(absoluteApiUrl(previewPagePath(jobId, label, page)), {
-              headers: authHeaders(),
-              signal: controller.signal
-            });
-            if (!response.ok) {
-              throw new Error(`Preview page ${page} failed with ${response.status}`);
-            }
-            const blob = await response.blob();
-            const url = URL.createObjectURL(blob);
-            objectUrls.push(url);
-            return { page, url };
-          })
-        );
+        const loadedPages: PreviewPage[] = [];
+        for (let page = 1; page <= pageCount; page += 1) {
+          const response = await fetch(absoluteApiUrl(previewPagePath(jobId, label, page)), {
+            headers: authHeaders(),
+            signal: controller.signal
+          });
+          if (!response.ok) {
+            throw new Error(`Preview page ${page} failed with ${response.status}`);
+          }
+          const blob = await response.blob();
+          const url = URL.createObjectURL(blob);
+          objectUrls.push(url);
+          loadedPages.push({ page, url });
+        }
         setPages(loadedPages);
       } catch (caught) {
         if (!controller.signal.aborted) {

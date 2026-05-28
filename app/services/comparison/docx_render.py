@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import shutil
 import subprocess
 import tempfile
 from io import BytesIO
@@ -8,6 +7,8 @@ from pathlib import Path
 
 import fitz  # type: ignore[import-untyped]
 from docx import Document  # type: ignore[import-untyped]
+
+from app.services.comparison.office import soffice_executable, soffice_missing_message
 
 
 def docx_page_count(content: bytes) -> int:
@@ -29,37 +30,47 @@ def render_docx_page_png(content: bytes, page: int) -> bytes:
 
 
 def libreoffice_available() -> bool:
-    return shutil.which("soffice") is not None
+    return soffice_executable() is not None
 
 
 def _convert_docx_to_pdf(content: bytes) -> bytes:
-    soffice = shutil.which("soffice")
+    soffice = soffice_executable()
     if not soffice:
-        raise RuntimeError(
-            "LibreOffice (soffice) is required to render DOCX page previews. "
-            "Install LibreOffice or use the Docker image with libreoffice-writer."
-        )
+        raise RuntimeError(soffice_missing_message("DOCX page", "libreoffice-writer"))
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         docx_path = tmp_path / "document.docx"
+        profile_path = tmp_path / "lo-profile"
         docx_path.write_bytes(content)
-        subprocess.run(
-            [
-                soffice,
-                "--headless",
-                "--nologo",
-                "--nofirststartwizard",
-                "--convert-to",
-                "pdf",
-                "--outdir",
-                str(tmp_path),
-                str(docx_path),
-            ],
-            check=True,
-            timeout=180,
-            capture_output=True,
-        )
+        try:
+            subprocess.run(
+                [
+                    soffice,
+                    "--headless",
+                    "--nologo",
+                    "--nofirststartwizard",
+                    f"-env:UserInstallation=file://{profile_path.as_posix()}",
+                    "--convert-to",
+                    "pdf",
+                    "--outdir",
+                    str(tmp_path),
+                    str(docx_path),
+                ],
+                check=True,
+                timeout=180,
+                capture_output=True,
+                text=True,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("LibreOffice timed out while converting DOCX to PDF") from exc
+        except subprocess.CalledProcessError as exc:
+            stderr = (exc.stderr or "").strip()
+            stdout = (exc.stdout or "").strip()
+            diagnostics = stderr or stdout or "no diagnostic output"
+            raise RuntimeError(
+                f"LibreOffice failed to convert DOCX to PDF (exit code {exc.returncode}): {diagnostics[:400]}"
+            ) from exc
         pdf_path = tmp_path / "document.pdf"
         if not pdf_path.exists():
             candidates = sorted(tmp_path.glob("*.pdf"))

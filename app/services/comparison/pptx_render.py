@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import shutil
 import subprocess
 import tempfile
 from io import BytesIO
@@ -8,6 +7,8 @@ from pathlib import Path
 
 import fitz  # type: ignore[import-untyped]
 from pptx import Presentation  # type: ignore[import-untyped]
+
+from app.services.comparison.office import soffice_executable, soffice_missing_message
 
 
 def pptx_slide_count(content: bytes) -> int:
@@ -28,37 +29,47 @@ def render_pptx_slide_png(content: bytes, slide: int) -> bytes:
 
 
 def libreoffice_available() -> bool:
-    return shutil.which("soffice") is not None
+    return soffice_executable() is not None
 
 
 def _convert_pptx_to_pdf(content: bytes) -> bytes:
-    soffice = shutil.which("soffice")
+    soffice = soffice_executable()
     if not soffice:
-        raise RuntimeError(
-            "LibreOffice (soffice) is required to render PPTX slide previews. "
-            "Install LibreOffice or use the Docker image with libreoffice-impress."
-        )
+        raise RuntimeError(soffice_missing_message("PPTX slide", "libreoffice-impress"))
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         pptx_path = tmp_path / "deck.pptx"
+        profile_path = tmp_path / "lo-profile"
         pptx_path.write_bytes(content)
-        subprocess.run(
-            [
-                soffice,
-                "--headless",
-                "--nologo",
-                "--nofirststartwizard",
-                "--convert-to",
-                "pdf",
-                "--outdir",
-                str(tmp_path),
-                str(pptx_path),
-            ],
-            check=True,
-            timeout=180,
-            capture_output=True,
-        )
+        try:
+            subprocess.run(
+                [
+                    soffice,
+                    "--headless",
+                    "--nologo",
+                    "--nofirststartwizard",
+                    f"-env:UserInstallation=file://{profile_path.as_posix()}",
+                    "--convert-to",
+                    "pdf",
+                    "--outdir",
+                    str(tmp_path),
+                    str(pptx_path),
+                ],
+                check=True,
+                timeout=180,
+                capture_output=True,
+                text=True,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("LibreOffice timed out while converting PPTX to PDF") from exc
+        except subprocess.CalledProcessError as exc:
+            stderr = (exc.stderr or "").strip()
+            stdout = (exc.stdout or "").strip()
+            diagnostics = stderr or stdout or "no diagnostic output"
+            raise RuntimeError(
+                f"LibreOffice failed to convert PPTX to PDF (exit code {exc.returncode}): {diagnostics[:400]}"
+            ) from exc
         pdf_path = tmp_path / "deck.pdf"
         if not pdf_path.exists():
             candidates = sorted(tmp_path.glob("*.pdf"))
